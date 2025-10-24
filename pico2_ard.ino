@@ -46,7 +46,10 @@ uint8_t user_name_length      = 0;
 uint8_t user_name[30];
 
 uint16_t find_write_addr(uint16_t guess_addr){
-  for(uint16_t i =0; i< (60000/8); i++){
+  Serial.println("search start");
+  Serial.println(guess_addr);
+  for(uint16_t i =0; i< (60000/4); i=i+4){
+    Serial.println(i);
     uint32_t temp_addr = guess_addr +i;
     if(temp_addr >= MEM_VAL_DATA_END){
       temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
@@ -62,14 +65,15 @@ uint16_t find_write_addr(uint16_t guess_addr){
 }
 
 void init_memspace(){
-  if(read_int_tag(MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV)){ //not yet initialized
+  if(read_int_tag(MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
+    Serial.print("INIT");
     write_int_tag(MEM_PTR_LAST_WRITE, MEM_VAL_DATA_START);
     write_int_tag(MEM_PTR_LAST_READ,  MEM_VAL_DATA_START);
 
     write_int_tag(MEM_VAL_DATA_START, 0xC1EAC1EA); //empty field -> ready to write:::
     
-    write_string_tag(MEM_VAL_USER_NAME_LENGTH, 23);
-    write_string_tag(MEM_VAL_USER_NAME, "USE APP TO SET USERNAME", 23);
+    write_int_tag(MEM_VAL_USER_NAME_LENGTH, 23);
+    write_string_tag(MEM_VAL_USER_NAME, (uint8_t*) "USE APP TO SET USERNAME", 23);
 
     write_int_tag(MEM_VAL_MEASURE_MODE, 0x0001);     
     write_int_tag(MEM_VAL_WARNING, 5000);
@@ -77,12 +81,14 @@ void init_memspace(){
 
     write_int_tag(MEM_VAL_DATA_VALID, (((0x501d) << 16) + FW_REV));
   }
+  Serial.print("RESTORE");
   current_data_add = read_int_tag(MEM_PTR_LAST_WRITE);
   current_data_add = find_write_addr(current_data_add);
   measurement_mode = read_int_tag(MEM_VAL_MEASURE_MODE);
   if(measurement_mode > 2) measurement_mode =1; //invalid value 
   user_name_length = read_int_tag(MEM_VAL_USER_NAME_LENGTH);
   read_string_tag(MEM_VAL_USER_NAME_LENGTH, user_name, user_name_length);
+  Serial.print("INIT/RESTOR DONE");
 }
 
 uint32_t read_int_tag(int address)
@@ -119,9 +125,6 @@ void write_int_tag(int address, uint32_t value)
 void write_string_tag(int address, uint8_t * stringtowrite, uint8_t string_len)
 {
   //unprotect?
-  uint32_t result = 0;
-  uint8_t tagWrite[4];
-  uint32_t tempvalue = value;
   if((address % 4) == 0){
     tag.writeEEPROM(address, stringtowrite, string_len);
     return;
@@ -129,14 +132,11 @@ void write_string_tag(int address, uint8_t * stringtowrite, uint8_t string_len)
   GLOBAL_ERROR = 1;
 }
 
-void read_string_tag(int address, uint8_t * stringtowrite, uint8_t string_len)
+void read_string_tag(int address, uint8_t * stringtoread, uint8_t string_len)
 {
   //unprotect?
-  uint32_t result = 0;
-  uint8_t tagWrite[4];
-  uint32_t tempvalue = value;
   if((address % 4) == 0){
-    tag.readEEPROM(address, stringtowrite, string_len);
+    tag.readEEPROM(address, stringtoread, string_len);
     return;
   }
   GLOBAL_ERROR = 1;
@@ -163,7 +163,8 @@ void setup_bmv080(){
 
   if(bmv080.setDutyCyclingPeriod(duty_cycling_period) == true)
   {
-      Serial.println("BMV080 set to %d second duty cycle period", duty_cycling_period);
+      Serial.println("BMV080 set to duty cycle period");
+      Serial.println(duty_cycling_period);
   }
   else
   {
@@ -200,169 +201,6 @@ void setup_tag(){
   Serial.print(F("I2C session is "));
   Serial.println(tag.isI2CSessionOpen() ? "opened." : "closed.");
 
-  Serial.println(F("EEPROM area 1 will always be readable (datasheet page 60)."));
-  Serial.print(F("EEPROM area 1 read protection: "));
-  Serial.println(tag.getEEPROMReadProtectionBit(1) ? "protected." : "opened.");
-
-  Serial.print(F("EEPROM area 1 write protection: "));
-  Serial.println(tag.getEEPROMWriteProtectionBit(1) ? "protected." : "opened.");
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.println(F("Protecting area 1 for write operation."));
-  tag.programEEPROMWriteProtectionBit(1, true);
-
-  bool area1WriteProtected = tag.getEEPROMWriteProtectionBit(1);
-  Serial.print(F("EEPROM area 1 write protection: "));
-  Serial.println(area1WriteProtected ? "protected." : "opened.");
-  if (area1WriteProtected)
-    Serial.println(F("Writing can only take place if I2C security session is opened."));
-
-  // -=-=-=-=-=-=-=-=-
-
-  // Read 16 bytes from EEPROM location 0x0
-  uint8_t tagRead[16] = {0};
-  Serial.print(F("Reading values, starting at location 0x0, with opened security session:        "));
-  tag.readEEPROM(0x0, tagRead, 16); // Read the EEPROM: start at address 0x0, read contents into tagRead; read 16 bytes
-  for (auto value : tagRead) // Print the contents
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-
-  // -=-=-=-=-=-=-=-=-
-
-  // Try to write 16 random bytes to EEPROM starting at location 0x0
-  uint8_t tagWrite[16];
-  randomSeed(analogRead(A0));
-  for (uint8_t i = 0; i < 16; i++)
-    tagWrite[i] = (uint8_t)random(0, 0xff);
-
-  Serial.print(F("Writing random values, starting at location 0x0, with opened security session: "));
-  for (auto value : tagWrite)
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-  tag.writeEEPROM(0x0, tagWrite, 16);
-
-  // -=-=-=-=-=-=-=-=-
-
-  memset(tagRead, 0, 16);
-  Serial.print(F("Reading values, starting at location 0x0, with opened security session:        "));
-  tag.readEEPROM(0x0, tagRead, 16);
-  for (auto value : tagRead)
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.println(F("Closing I2C security session - by writing the wrong password."));
-  password[1] = {0x10}; // Change one byte of the password
-  tag.openI2CSession(password);
-
-  Serial.print(F("I2C session is "));
-  Serial.println(tag.isI2CSessionOpen() ? "opened." : "closed.");
-
-  // -=-=-=-=-=-=-=-=-
-
-  // Try to write 16 random bytes from EEPROM location 0x0
-  randomSeed(analogRead(A0));
-  for (uint8_t i = 0; i < 16; i++)
-    tagWrite[i] = (uint8_t)random(0, 0xff);
-
-  Serial.print(F("Trying to write random values, starting at location 0x0, with closed security session: "));
-  for (auto value : tagWrite)
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-  tag.writeEEPROM(0x0, tagWrite, 16);
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.print(F("Reading values, starting at location 0x0, with closed security session:                "));
-  memset(tagRead, 0, 16);
-  tag.readEEPROM(0x0, tagRead, 16);
-  for (auto value : tagRead)
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.println(F("Re-opening I2C session - with the correct password."));
-  password[1] = {0x0}; // Reset the password
-  tag.openI2CSession(password);
-  Serial.print(F("I2C session is "));
-  Serial.println(tag.isI2CSessionOpen() ? "opened." : "closed.");
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.println(F("Unprotecting area 1 for write operation."));
-  tag.programEEPROMWriteProtectionBit(1, false);
-
-  Serial.print(F("EEPROM area 1 write protection: "));
-  Serial.println(tag.getEEPROMWriteProtectionBit(1) ? "protected." : "opened.");
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.println(F("Closing I2C session - by writing the wrong password."));
-  password[1] = {0x10}; // Change one byte of the password
-  tag.openI2CSession(password);
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.print(F("Writing zeros, starting at location 0x0, with closed session:  "));
-  memset(tagWrite, 0, 16);
-  for (auto value : tagWrite)
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
-  tag.writeEEPROM(0x0, tagWrite, 16);
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.print(F("Reading values, starting at location 0x0, with closed session: "));
-  memset(tagRead, 0, 16);
-  tag.readEEPROM(0x0, tagRead, 16);
-  for (auto value : tagRead)
-  {
-    Serial.print(F("0x"));
-    if (value < 0x10)
-      Serial.print(F("0"));
-    Serial.print(value, HEX);
-    Serial.print(F(" "));
-  }
-  Serial.println();
 
 }
 
@@ -404,10 +242,11 @@ void loop()
         current_data_add = find_write_addr(current_data_add);
 
         //find location to write
-        write_int_tag(current_data_add + 1, 0xC1EAC1EA); //CLEAN means 
+        write_int_tag(current_data_add + 4, 0xC1EAC1EA); //CLEAN means 
         write_int_tag(current_data_add, pm25_int);
-        current_data_add++; //dont care about overflow, this is handled by the find_write_addr;
+        current_data_add=current_data_add +4; //dont care about overflow, this is handled by the find_write_addr;
 
     }
     delay(1000);
+    Serial.print(".");
 }
