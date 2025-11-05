@@ -1,6 +1,21 @@
 #include <Wire.h>
 #include "SparkFun_BMV080_Arduino_Library.h" // CTRL+Click here to get the library: http://librarymanager/All#SparkFun_BMV080
 
+#include <SPI.h>
+#include "epd2in66.h"
+#include "imagedata.h"
+#include "epdpaint.h"
+
+#define COLORED     0
+#define UNCOLORED   1
+
+UBYTE image[500];
+Paint paint(image, 48, 80);    // width should be the multiple of 8 
+UDOUBLE time_start_ms;
+UDOUBLE time_now_s;
+
+
+
 SparkFunBMV080 bmv080; // Create an instance of the BMV080 class
 #define BMV080_ADDR 0x57  // SparkFun BMV080 Breakout defaults to 0x57
 
@@ -47,6 +62,10 @@ uint8_t measurement_mode      = 1;
 uint8_t user_name_length      = 0;
 uint8_t user_name[30];
 
+uint32_t abs_x(int value){
+  return (value < 0) ? -value : value;
+}
+
 uint16_t find_write_addr(uint16_t guess_addr){
   Serial.println("search start");
   Serial.println(guess_addr);
@@ -57,7 +76,7 @@ uint16_t find_write_addr(uint16_t guess_addr){
       temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
     }
     if(read_int_tag(temp_addr) == 0xC1EAC1EA){
-      if(abs(temp_addr - read_int_tag(MEM_PTR_LAST_WRITE)) > 100){
+      if(abs_x(temp_addr - read_int_tag(MEM_PTR_LAST_WRITE)) > 100){
         write_int_tag(MEM_PTR_LAST_WRITE, temp_addr);
       }
       return temp_addr;
@@ -221,6 +240,26 @@ void setup()
     setup_tag();
 
     init_memspace(); //on a fresh device:
+
+    Serial.begin(115200);
+    Epd epd;
+    Serial.print("e-Paper init...");
+    if (epd.Init() != 0) {
+      Serial.print("e-Paper init failed...");
+      return;
+    }
+    Serial.print("2.66inch e-Paper demo...\r\n ");
+    Serial.print("e-Paper Clear...\r\n ");
+    epd.Clear();  
+
+    paint.SetRotate(ROTATE_270);
+    
+  #if 1
+    Serial.print("draw image...\r\n ");
+    epd.DisplayFrame(IMAGE_DATA);
+    // delay(4000);
+    // epd.Clear();
+  #endif
 
 
 }
