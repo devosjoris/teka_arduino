@@ -29,6 +29,8 @@ SFE_ST25DV64KC tag;
 #define MEM_VAL_WARNING             20    // MAX MIN(5000, MEM_VAL_LIMIT) 
 #define MEM_VAL_LIMIT               24    // MAX 7000
 
+#define MEM_VAL_NFC_LOCK            30
+
 #define MEM_VAL_USER_NAME_LENGTH    44
 #define MEM_VAL_USER_NAME           48
 
@@ -55,7 +57,7 @@ uint16_t find_write_addr(uint16_t guess_addr){
       temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
     }
     if(read_int_tag(temp_addr) == 0xC1EAC1EA){
-      if(i > 25){ //do not update it on each run to keep the number of writes low:::
+      if(abs(temp_addr - read_int_tag(MEM_PTR_LAST_WRITE)) > 100){
         write_int_tag(MEM_PTR_LAST_WRITE, temp_addr);
       }
       return temp_addr;
@@ -88,7 +90,7 @@ void init_memspace(){
   if(measurement_mode > 2) measurement_mode =1; //invalid value 
   user_name_length = read_int_tag(MEM_VAL_USER_NAME_LENGTH);
   read_string_tag(MEM_VAL_USER_NAME_LENGTH, user_name, user_name_length);
-  Serial.print("INIT/RESTOR DONE");
+  Serial.print("INIT/RESTORE DONE");
 }
 
 uint32_t read_int_tag(int address)
