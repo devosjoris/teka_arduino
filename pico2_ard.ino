@@ -6,6 +6,11 @@
 #include "imagedata.h"
 #include "epdpaint.h"
 
+#include "esp_sleep.h"
+#include "esp_timer.h"
+
+int64_t last_sensor_readout_us =0;
+
 #define COLORED     0
 #define UNCOLORED   1
 
@@ -32,6 +37,13 @@ SFE_ST25DV64KC tag;
 // - individual limit value [mg/m³] (cannot be set lower than the warning value and maximum 5 mg/m³);
 // - Operating mode (mode 1: measurement every minute; mode 2: measurement every 5 minutes);
 
+//Timestamp? phone connects -> writes timestamp to MEM_VAL_TIMESTAMP, and writes new timestamp flag
+//esp32 boots -> 
+
+//readout -> write as timestamp: absolute timestamp (when available from NFC)
+//or a relative timestamp (seconds since last write?)
+
+
 
 //ALL 32 bit numbers
 
@@ -44,15 +56,16 @@ SFE_ST25DV64KC tag;
 #define MEM_VAL_WARNING             20    // MAX MIN(5000, MEM_VAL_LIMIT) 
 #define MEM_VAL_LIMIT               24    // MAX 7000
 
-#define MEM_VAL_NFC_LOCK            30
+#define MEM_VAL_NEWTIMESTAMP        28    //set by app
+#define MEM_VAL_NEWSETTINGS         32    //set by app
 
 #define MEM_VAL_USER_NAME_LENGTH    44
 #define MEM_VAL_USER_NAME           48
 
 #define MEM_VAL_DATA_VALID          92
 
-#define MEM_VAL_DATA_START          (100 *4)
-#define MEM_VAL_DATA_END            (7500)
+#define MEM_VAL_DATA_START          (100 *2) 
+#define MEM_VAL_DATA_END            (8188) //last bit
 
 #define FW_REV                       1
 
@@ -70,7 +83,7 @@ uint16_t find_write_addr(uint16_t guess_addr){
   Serial.println("search start");
   Serial.println(guess_addr);
   for(uint16_t i =0; i< (60000/4); i=i+4){
-    Serial.println(i);
+    //Serial.println(i);
     uint32_t temp_addr = guess_addr +i;
     if(temp_addr >= MEM_VAL_DATA_END){
       temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
@@ -83,10 +96,11 @@ uint16_t find_write_addr(uint16_t guess_addr){
     }
   }
   GLOBAL_ERROR = 1;
+  return 0;
+
 }
 
-void init_memspace(){
-  if(read_int_tag(MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
+void reset_memspace(){
     Serial.print("INIT");
     write_int_tag(MEM_PTR_LAST_WRITE, MEM_VAL_DATA_START);
     write_int_tag(MEM_PTR_LAST_READ,  MEM_VAL_DATA_START);
@@ -101,15 +115,27 @@ void init_memspace(){
     write_int_tag(MEM_VAL_LIMIT, 7000);
 
     write_int_tag(MEM_VAL_DATA_VALID, (((0x501d) << 16) + FW_REV));
+}
+
+void init_memspace(){
+  if(read_int_tag(MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
+    reset_memspace();
   }
   Serial.print("RESTORE");
   current_data_add = read_int_tag(MEM_PTR_LAST_WRITE);
   current_data_add = find_write_addr(current_data_add);
   measurement_mode = read_int_tag(MEM_VAL_MEASURE_MODE);
-  if(measurement_mode > 2) measurement_mode =1; //invalid value 
+  Serial.println("measurement_mode");
+  Serial.println(measurement_mode);
+
+  if(measurement_mode > 2) GLOBAL_ERROR = 1; //invalid value 
   user_name_length = read_int_tag(MEM_VAL_USER_NAME_LENGTH);
-  read_string_tag(MEM_VAL_USER_NAME_LENGTH, user_name, user_name_length);
+  if(user_name_length > 40) GLOBAL_ERROR = 1; //invalid value 
+  else                      read_string_tag(MEM_VAL_USER_NAME_LENGTH, user_name, user_name_length);
   Serial.print("INIT/RESTORE DONE");
+  if(GLOBAL_ERROR){
+    reset_memspace();
+  }
 }
 
 uint32_t read_int_tag(int address)
@@ -175,32 +201,34 @@ void setup_bmv080(){
 
   /* Set the sensor Duty Cycling Period (seconds)*/
   uint16_t duty_cycling_period = 60;
-  if(measurement_mode == 1){
+  if(measurement_mode == 0){
     duty_cycling_period = 60;
   }
   else{
     duty_cycling_period = 300;
   }
 
-  if(bmv080.setDutyCyclingPeriod(duty_cycling_period) == true)
-  {
-      Serial.println("BMV080 set to duty cycle period");
-      Serial.println(duty_cycling_period);
-  }
-  else
-  {
-      Serial.println("Error setting BMV080 duty cycle period");
-      GLOBAL_ERROR = 1;
-  }
+  if(1){
+    if(bmv080.setDutyCyclingPeriod(duty_cycling_period) == true)
+    {
+        Serial.println("BMV080 set to duty cycle period");
+        Serial.println(duty_cycling_period);
+    }
+    else
+    {
+        Serial.println("Error setting BMV080 duty cycle period");
+        GLOBAL_ERROR = 1;
+    }
 
-  /* Set the sensor mode to Duty Cycle mode */
-  if(bmv080.setMode(SF_BMV080_MODE_DUTY_CYCLE) == true)
-  {
-      Serial.println("BMV080 set to Duty Cycle mode");
-  }
-  else
-  {
-      Serial.println("Error setting BMV080 mode");
+    /* Set the sensor mode to Duty Cycle mode */
+    if(bmv080.setMode(SF_BMV080_MODE_DUTY_CYCLE) == true)
+    {
+        Serial.println("BMV080 set to Duty Cycle mode");
+    }
+    else
+    {
+        Serial.println("Error setting BMV080 mode");
+    }
   }
 }
 
@@ -229,19 +257,13 @@ void setup_tag(){
 void setup()
 {
     Serial.begin(115200);
-
-    // while(!Serial) delay(10); // Wait for Serial to become available.
-    // // Necessary for boards with native USB (like the SAMD51 Thing+).
-    // // For a final version of a project that does not need serial debug (or a USB cable plugged in),
-    // // Comment out this while loop, or it will prevent the remaining code from running.
-
     Wire.begin();
-    setup_bmv080();
-    setup_tag();
 
+    setup_tag();
     init_memspace(); //on a fresh device:
 
-    Serial.begin(115200);
+    setup_bmv080(); //do after tag since the memspace sets the duty cycle...
+
     Epd epd;
     Serial.print("e-Paper init...");
     if (epd.Init() != 0) {
@@ -266,6 +288,20 @@ void setup()
 
 void loop()
 {
+    if(read_int_tag(MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
+      //new timestamp set by the app, add this timestamp to the ringbuffer...
+      Serial.println("NEW_TIMESTAMP");
+      current_data_add = find_write_addr(current_data_add);
+      int timestamp = read_int_tag(MEM_VAL_TIMESTAMP); //this will alwasy have the lsb set, this is beeing handled by the app...
+      if((timestamp %2 ==1) && timestamp > 1762359245){
+        write_int_tag(current_data_add + 4, 0xC1EAC1EA);
+        write_int_tag(current_data_add, timestamp);
+        current_data_add=current_data_add + 4; //dont care about overflow, this is handled by the find_write_addr;
+      }
+      write_int_tag(MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
+
+    }
+
     if(bmv080.readSensor())
     {
         float pm25 = bmv080.PM25();  //µg/m³ teka spec says ,max is 7mg/m3 so 7000
@@ -277,17 +313,22 @@ void loop()
         if(bmv080.isObstructed() == true)
         {
             Serial.print("\tObstructed");
-            pm25_int = 0xffff;
+            pm25_int = 0x0fff;
         }
+        int64_t since_boot_us = esp_timer_get_time();
         //store this in the memory:
         current_data_add = find_write_addr(current_data_add);
-
+        uint16_t relative_timestamp = ((since_boot_us -last_sensor_readout_us)/1000/1000/60);
+        if(relative_timestamp < 1) relative_timestamp =1;
+        if(relative_timestamp == 4) relative_timestamp =5;
+        Serial.println("timestamp");
+        Serial.println(relative_timestamp);
         //find location to write
         write_int_tag(current_data_add + 4, 0xC1EAC1EA); //CLEAN means 
-        write_int_tag(current_data_add, pm25_int);
-        current_data_add=current_data_add +4; //dont care about overflow, this is handled by the find_write_addr;
-
+        write_int_tag(current_data_add, (pm25_int << 1) +(relative_timestamp  << 16)); //lsb =1 means a timestamp value from nfc i.o. a sensor readout...
+        last_sensor_readout_us = since_boot_us;
+        current_data_add=current_data_add + 4; //dont care about overflow, this is handled by the find_write_addr;
     }
-    delay(1000);
     Serial.print(".");
+    delay(10000);
 }
