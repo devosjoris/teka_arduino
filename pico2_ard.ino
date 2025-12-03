@@ -39,19 +39,11 @@ void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLo
 #define COLORED     0
 #define UNCOLORED   1
 
-// Separate paint buffers for different UI elements
-// Panel is 296x152; with ROTATE_270 logical space is 152x296 (w x h).
-// Use three non-overlapping windows:
-// - Date: full width strip at top (152x40)
-// - Name: full width strip in the middle (152x80)
-// - Smiley: full width strip at bottom (152x40)
-UBYTE image_date[40*152];     // h * w
-UBYTE image_name[80*152];
-UBYTE image_smiley[40*152];
+// Single full-screen paint buffer (logical space 152x296 with ROTATE_270)
+// 152 * 296 pixels / 8 bits per byte = 5632 bytes
+UBYTE image_full[152*296/8];
 
-Paint paint_date(image_date, 152, 40);    // width must be multiple of 8
-Paint paint_name(image_name, 152, 80);
-Paint paint_smiley(image_smiley, 152, 40);
+Paint paint(image_full, 152, 296);    // width must be multiple of 8
 UDOUBLE time_start_ms;
 UDOUBLE time_now_s;
 
@@ -167,7 +159,7 @@ void init_memspace(){
   if(measurement_mode > 2) GLOBAL_ERROR = 1; //invalid value 
   user_name_length = read_int_tag(MEM_VAL_USER_NAME_LENGTH);
   if(user_name_length > 40) GLOBAL_ERROR = 1; //invalid value 
-  else                      read_string_tag(MEM_VAL_USER_NAME_LENGTH, user_name, user_name_length);
+  else                      read_string_tag(MEM_VAL_USER_NAME, user_name, user_name_length);
   Serial.print("INIT/RESTORE DONE");
   if(GLOBAL_ERROR){
     reset_memspace();
@@ -310,9 +302,7 @@ void setup()
     Serial.print("e-Paper Clear...\r\n ");
     epd.Clear();  
 
-    paint_date.SetRotate(ROTATE_0);
-    paint_name.SetRotate(ROTATE_0);
-    paint_smiley.SetRotate(ROTATE_0);
+    paint.SetRotate(ROTATE_0);
     
   #if 1
     epd.Init_Partial();
@@ -324,27 +314,26 @@ void setup()
       char date_string[20];
       formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
 
-      // date buffer: date text at top-left of screen (small font)
-      paint_date.Clear(UNCOLORED);
-      paint_date.DrawStringAt(0, 0, date_string, &Font8, COLORED);
+      // Clear whole screen buffer
+      paint.Clear(UNCOLORED);
 
-      // name buffer: username centered on screen
-      paint_name.Clear(UNCOLORED);
-      // Rough centering: y ~ (80-24)/2, x leave some margin
-      paint_name.DrawStringAt(10, 28, (char*)"Joris", &Font24, COLORED);
+      // Date: top-left
+      paint.DrawStringAt(0, 0, date_string, &Font8, COLORED);
 
-      // smiley buffer: centered at bottom of screen
-      paint_smiley.Clear(UNCOLORED);
-      // Place in middle of 152x40 strip
-      paint_smiley.DrawStringAt(70, 10, ":)", &Font24, COLORED);
+      // Username: center-center (rough placement for 152x296 logical size)
+      // Use NFC user_name buffer instead of hardcoded string
+      // Approx center: x ~ 10, y ~ (296 - 24) / 2 ≈ 136
+      Serial.println(user_name[0]);
+      Serial.println(user_name[1]);
+      Serial.println(user_name[2]);
+      paint.DrawStringAt(10, 136, (char*)user_name, &Font24, COLORED);
+
+      // Smiley: center-bottom
+      // Place near bottom: y ~ 296 - 40
+      paint.DrawStringAt(70, 256, ":)", &Font24, COLORED);
 
       Serial.print("refresh------\r\n ");
-    //UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight)
-      // Position the three non-overlapping windows on the 152x296 logical panel
-      // UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight
-      epd.DisplayFrame_part(paint_date.GetImage(),   0,   0, 152, 40);   // date: full-width top strip
-      epd.DisplayFrame_part(paint_name.GetImage(),   0, 108, 152, 80);   // name: centered vertical band
-      epd.DisplayFrame_part(paint_smiley.GetImage(), 0, 256, 152, 40);   // smiley: full-width bottom strip
+      epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
     }
   #endif
 
