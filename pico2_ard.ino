@@ -39,8 +39,19 @@ void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLo
 #define COLORED     0
 #define UNCOLORED   1
 
-UBYTE image[50*160];
-Paint paint(image, 48, 160);    // width should be the multiple of 8 
+// Separate paint buffers for different UI elements
+// Panel is 296x152; with ROTATE_270 logical space is 152x296 (w x h).
+// Use three non-overlapping windows:
+// - Date: full width strip at top (152x40)
+// - Name: full width strip in the middle (152x80)
+// - Smiley: full width strip at bottom (152x40)
+UBYTE image_date[40*152];     // h * w
+UBYTE image_name[80*152];
+UBYTE image_smiley[40*152];
+
+Paint paint_date(image_date, 152, 40);    // width must be multiple of 8
+Paint paint_name(image_name, 152, 80);
+Paint paint_smiley(image_smiley, 152, 40);
 UDOUBLE time_start_ms;
 UDOUBLE time_now_s;
 
@@ -299,7 +310,9 @@ void setup()
     Serial.print("e-Paper Clear...\r\n ");
     epd.Clear();  
 
-    paint.SetRotate(ROTATE_270);
+    paint_date.SetRotate(ROTATE_0);
+    paint_name.SetRotate(ROTATE_0);
+    paint_smiley.SetRotate(ROTATE_0);
     
   #if 1
     epd.Init_Partial();
@@ -307,23 +320,31 @@ void setup()
     Serial.print("partial display___ \r\n ");
     UBYTE i;
     time_start_ms = millis();
-    for(i=0; i<10; i++) {
+    for(i=0; i<1; i++) {
       char date_string[20];
       formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
 
-      paint.Clear(UNCOLORED);
+      // date buffer: date text at top-left of screen (small font)
+      paint_date.Clear(UNCOLORED);
+      paint_date.DrawStringAt(0, 0, date_string, &Font8, COLORED);
 
-      // date top-left (small font)
-      paint.DrawStringAt(0, 0, date_string, &Font8, COLORED);
+      // name buffer: username centered on screen
+      paint_name.Clear(UNCOLORED);
+      // Rough centering: y ~ (80-24)/2, x leave some margin
+      paint_name.DrawStringAt(10, 28, (char*)"Joris", &Font24, COLORED);
 
-      // username roughly centered (16px/24px font, buffer 48x160)
-      paint.DrawStringAt(20, 16, (char*)"joris", &Font16, COLORED);
-
-      // smiley center-bottom
-      paint.DrawStringAt(60, 32, ":)", &Font16, COLORED);
+      // smiley buffer: centered at bottom of screen
+      paint_smiley.Clear(UNCOLORED);
+      // Place in middle of 152x40 strip
+      paint_smiley.DrawStringAt(70, 10, ":)", &Font24, COLORED);
 
       Serial.print("refresh------\r\n ");
-      epd.DisplayFrame_part(paint.GetImage(), 20, 50, 48, 160);  // UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight
+    //UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight)
+      // Position the three non-overlapping windows on the 152x296 logical panel
+      // UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight
+      epd.DisplayFrame_part(paint_date.GetImage(),   0,   0, 152, 40);   // date: full-width top strip
+      epd.DisplayFrame_part(paint_name.GetImage(),   0, 108, 152, 80);   // name: centered vertical band
+      epd.DisplayFrame_part(paint_smiley.GetImage(), 0, 256, 152, 40);   // smiley: full-width bottom strip
     }
   #endif
 
