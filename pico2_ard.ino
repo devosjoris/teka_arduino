@@ -31,9 +31,12 @@ void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLo
   struct tm* p = useLocal ? localtime(&t) : gmtime(&t);
   tmval = *p;
 #endif
-  snprintf(out, outSize, "%04d-%02d-%02d %02d:%02d:%02d",
-           tmval.tm_year + 1900, tmval.tm_mon + 1, tmval.tm_mday,
-           tmval.tm_hour, tmval.tm_min, tmval.tm_sec);
+  // snprintf(out, outSize, "%04d-%02d-%02d %02d:%02d:%02d",
+  //          tmval.tm_year + 1900, tmval.tm_mon + 1, tmval.tm_mday,
+  //          tmval.tm_hour, tmval.tm_min, tmval.tm_sec);
+
+  snprintf(out, outSize, "%02d-%02d-%04d",
+           tmval.tm_mday, tmval.tm_mon + 1, tmval.tm_year + 1900);
 }
 
 #define COLORED     0
@@ -323,9 +326,6 @@ void setup()
       // Username: center-center (rough placement for 152x296 logical size)
       // Use NFC user_name buffer instead of hardcoded string
       // Approx center: x ~ 10, y ~ (296 - 24) / 2 ≈ 136
-      Serial.println(user_name[0]);
-      Serial.println(user_name[1]);
-      Serial.println(user_name[2]);
       paint.DrawStringAt(10, 70, (char*)user_name, &Font24, COLORED);
 
       // Smiley: center-bottom
