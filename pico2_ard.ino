@@ -308,11 +308,20 @@ void setup()
     UBYTE i;
     time_start_ms = millis();
     for(i=0; i<10; i++) {
-      char time_string[20];
-      formatEpochSeconds(unix_timestamp, time_string, sizeof(time_string), false);
+      char date_string[20];
+      formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
 
       paint.Clear(UNCOLORED);
-      paint.DrawStringAt(10, 10, time_string, &Font8, COLORED);
+
+      // date top-left (small font)
+      paint.DrawStringAt(0, 0, date_string, &Font8, COLORED);
+
+      // username roughly centered (16px/24px font, buffer 48x160)
+      paint.DrawStringAt(20, 16, (char*)"joris", &Font16, COLORED);
+
+      // smiley center-bottom
+      paint.DrawStringAt(60, 32, ":)", &Font16, COLORED);
+
       Serial.print("refresh------\r\n ");
       epd.DisplayFrame_part(paint.GetImage(), 20, 50, 48, 160);  // UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight
     }
