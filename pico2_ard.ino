@@ -302,7 +302,7 @@ void setup()
     Serial.print("e-Paper Clear...\r\n ");
     epd.Clear();  
 
-    paint.SetRotate(ROTATE_0);
+    paint.SetRotate(ROTATE_90);
     
   #if 1
     epd.Init_Partial();
@@ -318,7 +318,7 @@ void setup()
       paint.Clear(UNCOLORED);
 
       // Date: top-left
-      paint.DrawStringAt(0, 0, date_string, &Font8, COLORED);
+      paint.DrawStringAt(0, 0, date_string, &Font12, COLORED);
 
       // Username: center-center (rough placement for 152x296 logical size)
       // Use NFC user_name buffer instead of hardcoded string
@@ -326,11 +326,11 @@ void setup()
       Serial.println(user_name[0]);
       Serial.println(user_name[1]);
       Serial.println(user_name[2]);
-      paint.DrawStringAt(10, 136, (char*)user_name, &Font24, COLORED);
+      paint.DrawStringAt(10, 70, (char*)user_name, &Font24, COLORED);
 
       // Smiley: center-bottom
       // Place near bottom: y ~ 296 - 40
-      paint.DrawStringAt(70, 256, ":)", &Font24, COLORED);
+      paint.DrawStringAt(70, 100, ":)", &Font24, COLORED);
 
       Serial.print("refresh------\r\n ");
       epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
