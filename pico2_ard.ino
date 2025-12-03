@@ -11,11 +11,36 @@
 
 int64_t last_sensor_readout_us =0;
 
+
+//RTC
+
+uint32_t unix_timestamp = 1764430908;
+
+#include <time.h>
+
+// Formats: "YYYY-MM-DD HH:MM:SS"
+void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLocal = false) {
+  time_t t = (time_t)epochSec;
+  struct tm tmval;
+#if defined(ESP32) || defined(ESP8266)
+  // ESP platforms have localtime_r/gmtime_r
+  if (useLocal) localtime_r(&t, &tmval);
+  else gmtime_r(&t, &tmval);
+#else
+  // Fallback: non-thread-safe, but fine on Arduino
+  struct tm* p = useLocal ? localtime(&t) : gmtime(&t);
+  tmval = *p;
+#endif
+  snprintf(out, outSize, "%04d-%02d-%02d %02d:%02d:%02d",
+           tmval.tm_year + 1900, tmval.tm_mon + 1, tmval.tm_mday,
+           tmval.tm_hour, tmval.tm_min, tmval.tm_sec);
+}
+
 #define COLORED     0
 #define UNCOLORED   1
 
-UBYTE image[500];
-Paint paint(image, 48, 80);    // width should be the multiple of 8 
+UBYTE image[50*160];
+Paint paint(image, 48, 160);    // width should be the multiple of 8 
 UDOUBLE time_start_ms;
 UDOUBLE time_now_s;
 
@@ -277,10 +302,20 @@ void setup()
     paint.SetRotate(ROTATE_270);
     
   #if 1
-    Serial.print("draw image...\r\n ");
-    epd.DisplayFrame(IMAGE_DATA);
-    // delay(4000);
-    // epd.Clear();
+    epd.Init_Partial();
+    epd.Clear();
+    Serial.print("partial display___ \r\n ");
+    UBYTE i;
+    time_start_ms = millis();
+    for(i=0; i<10; i++) {
+      char time_string[20];
+      formatEpochSeconds(unix_timestamp, time_string, sizeof(time_string), false);
+
+      paint.Clear(UNCOLORED);
+      paint.DrawStringAt(10, 10, time_string, &Font8, COLORED);
+      Serial.print("refresh------\r\n ");
+      epd.DisplayFrame_part(paint.GetImage(), 20, 50, 48, 160);  // UWORD Xstart, UWORD Ystart, UWORD iwidth, UWORD iheight
+    }
   #endif
 
 
