@@ -377,9 +377,9 @@ void setup()
 
       // Smiley: center-bottom
       // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
-      drawSmiley(&paint, SCREEN_WIDTH/4, SCREEN_HEIGHT * 2/3, 30, HAPPY);
+      drawSmiley(&paint, SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, HAPPY);
       drawSmiley(&paint, SCREEN_WIDTH/2, SCREEN_HEIGHT * 2/3, 30, NEUTRAL);
-      drawSmiley(&paint, 3*SCREEN_WIDTH/4, SCREEN_HEIGHT * 2/3, 30, SAD);
+      drawSmiley(&paint, 4*SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, SAD);
 
       Serial.print("refresh------\r\n ");
       epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
