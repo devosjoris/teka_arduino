@@ -45,6 +45,9 @@ void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLo
 #define COLORED     0
 #define UNCOLORED   1
 
+#define SCREEN_WIDTH  296
+#define SCREEN_HEIGHT 152
+
 // Single full-screen paint buffer (logical space 152x296 with ROTATE_270)
 // 152 * 296 pixels / 8 bits per byte = 5632 bytes
 UBYTE image_full[152*296/8];
@@ -111,6 +114,21 @@ uint8_t user_name[30];
 
 uint32_t abs_x(int value){
   return (value < 0) ? -value : value;
+}
+
+void drawStringCenter(Paint* p, int font_height, int box_x0, int box_y0, char* string_to_draw, int string_length, bool add_box) {
+  int font_width = font_height * 7/10; // approximate average width per character for Font20
+
+  int box_x1 = SCREEN_WIDTH - box_x0;
+  int box_y1 = box_y0 + font_height + 2;
+
+  if(add_box){
+    p->DrawFilledRectangle(box_x0, box_y0, box_x1, box_y1, COLORED);
+  }
+  int text_x = (SCREEN_WIDTH - (font_width * string_length)) / 2;
+  int text_y = box_y0 + 2;
+  
+  p->DrawStringAt(text_x, text_y, string_to_draw, &Font20, add_box ? UNCOLORED : COLORED);
 }
 
 uint16_t find_write_addr(uint16_t guess_addr){
@@ -345,38 +363,23 @@ void setup()
     for(i=0; i<1; i++) {
       char date_string[20];
       formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
-
       // Clear whole screen buffer
       paint.Clear(UNCOLORED);
 
       // Date: top-left
       paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
 
-      // Username: center-center (rough placement for 152x296 logical size)
-      // Use NFC user_name buffer instead of hardcoded string
-      // Approx center: x ~ 10, y ~ (296 - 24) / 2 ≈ 136
-
-      int screen_width = 296;
-      int screen_height = 152;
-
-
       int font_height = 20;
-      int font_width  = 14;
-
       int box_x0 = 9;
-      int box_y0 = 39;
-      int box_x1 = screen_width - box_x0;
-      int box_y1 = box_y0 + font_height +2;
+      int box_y0 = 30;
 
-      // Draw box outline
-      paint.DrawFilledRectangle(box_x0, box_y0, box_x1, box_y1, COLORED);
-      paint.DrawStringAt((screen_width - (font_width * user_name_length))/2, box_y0+2, (char*)user_name, &Font20, UNCOLORED);
+      drawStringCenter(&paint, font_height, box_x0, box_y0, (char*)user_name, user_name_length, true);
 
       // Smiley: center-bottom
-      // Place near bottom: y ~ 296 - 40
-        drawSmiley(&paint, screen_width/4, screen_height * 2/3, 30, HAPPY);
-      drawSmiley(&paint, screen_width/2, screen_height * 2/3, 30, NEUTRAL);
-      drawSmiley(&paint, 3*screen_width/4, screen_height * 2/3, 30, SAD);
+      // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
+      drawSmiley(&paint, SCREEN_WIDTH/4, SCREEN_HEIGHT * 2/3, 30, HAPPY);
+      drawSmiley(&paint, SCREEN_WIDTH/2, SCREEN_HEIGHT * 2/3, 30, NEUTRAL);
+      drawSmiley(&paint, 3*SCREEN_WIDTH/4, SCREEN_HEIGHT * 2/3, 30, SAD);
 
       Serial.print("refresh------\r\n ");
       epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
