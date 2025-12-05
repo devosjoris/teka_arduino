@@ -11,6 +11,9 @@
 
 int64_t last_sensor_readout_us =0;
 
+#define SAD 0
+#define HAPPY 1
+#define NEUTRAL 2
 
 //RTC
 
@@ -284,6 +287,32 @@ void setup_tag(){
 
 }
 
+void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
+  // Face outline
+  p->DrawCircle(cx, cy, radius, COLORED);
+
+  // Optional: filled face
+  // p->DrawFilledCircle(cx, cy, radius, COLORED);
+
+  // Eyes (offset left/right and up)
+  int eyeOffsetX = radius / 2;
+  int eyeOffsetY = radius / 3;
+  int eyeR = radius / 8;
+  p->DrawFilledCircle(cx - eyeOffsetX, cy - eyeOffsetY, eyeR, COLORED);
+  p->DrawFilledCircle(cx + eyeOffsetX, cy - eyeOffsetY, eyeR, COLORED);
+
+  // Mouth: approximate a smile with short lines forming an arc
+  int mouthRadius = radius / 2;
+  int mouthY = (smileytype == HAPPY) ? cy + radius / 4 : cy + radius / 3;
+
+  for (int dx = -mouthRadius; dx <= mouthRadius; dx++) {
+    int dy = (int)(0.4f * sqrt((float)(mouthRadius * mouthRadius - dx * dx)));
+    if (smileytype == SAD) dy = -dy;
+    if (smileytype == NEUTRAL) dy = 0;
+    p->DrawPixel(cx + dx, mouthY + dy, COLORED);
+  }
+}
+
 
 void setup()
 {
@@ -345,7 +374,9 @@ void setup()
 
       // Smiley: center-bottom
       // Place near bottom: y ~ 296 - 40
-      paint.DrawStringAt(70, 100, ":)", &Font24, COLORED);
+        drawSmiley(&paint, screen_width/4, screen_height * 2/3, 30, HAPPY);
+      drawSmiley(&paint, screen_width/2, screen_height * 2/3, 30, NEUTRAL);
+      drawSmiley(&paint, 3*screen_width/4, screen_height * 2/3, 30, SAD);
 
       Serial.print("refresh------\r\n ");
       epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
