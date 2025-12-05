@@ -116,8 +116,9 @@ uint32_t abs_x(int value){
   return (value < 0) ? -value : value;
 }
 
-void drawStringCenter(Paint* p, int font_height, int box_x0, int box_y0, char* string_to_draw, int string_length, bool add_box) {
-  int font_width = font_height * 7/10; // approximate average width per character for Font20
+void drawStringCenter(Paint* p, sFONT* font, int box_x0, int box_y0, char* string_to_draw, int string_length, bool add_box) {
+  int font_height = font->Height;
+  int font_width  = font->Width; // average width per character from font
 
   int box_x1 = SCREEN_WIDTH - box_x0;
   int box_y1 = box_y0 + font_height + 2;
@@ -127,8 +128,8 @@ void drawStringCenter(Paint* p, int font_height, int box_x0, int box_y0, char* s
   }
   int text_x = (SCREEN_WIDTH - (font_width * string_length)) / 2;
   int text_y = box_y0 + 2;
-  
-  p->DrawStringAt(text_x, text_y, string_to_draw, &Font20, add_box ? UNCOLORED : COLORED);
+
+  p->DrawStringAt(text_x, text_y, string_to_draw, font, add_box ? UNCOLORED : COLORED);
 }
 
 uint16_t find_write_addr(uint16_t guess_addr){
@@ -369,11 +370,10 @@ void setup()
       // Date: top-left
       paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
 
-      int font_height = 20;
       int box_x0 = 9;
       int box_y0 = 30;
 
-      drawStringCenter(&paint, font_height, box_x0, box_y0, (char*)user_name, user_name_length, true);
+      drawStringCenter(&paint, &Font16, box_x0, box_y0, (char*)user_name, user_name_length, true);
 
       // Smiley: center-bottom
       // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
