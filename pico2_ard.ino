@@ -320,15 +320,28 @@ void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
   p->DrawFilledCircle(cx - eyeOffsetX, cy - eyeOffsetY, eyeR, COLORED);
   p->DrawFilledCircle(cx + eyeOffsetX, cy - eyeOffsetY, eyeR, COLORED);
 
+  // Nose (small vertical line between eyes)
+  int noseHeight = radius / 4;
+  int noseX = cx;
+  int noseYTop = cy - eyeOffsetY + eyeR + 1;
+  int noseYBottom = noseYTop + noseHeight;
+  for (int y = noseYTop; y <= noseYBottom; y++) {
+    p->DrawPixel(noseX, y, COLORED);
+  }
+
   // Mouth: approximate a smile with short lines forming an arc
   int mouthRadius = radius / 2;
-  int mouthY = (smileytype == HAPPY) ? cy + radius / 4 : cy + radius / 3;
+  int mouthY;
+  if(smileytype == HAPPY) mouthY = cy + radius / 4;
+  else if(smileytype == SAD) mouthY = cy + radius / 2;
+  else if(smileytype == NEUTRAL) mouthY = cy + radius / 3;
 
   for (int dx = -mouthRadius; dx <= mouthRadius; dx++) {
     int dy = (int)(0.4f * sqrt((float)(mouthRadius * mouthRadius - dx * dx)));
     if (smileytype == SAD) dy = -dy;
     if (smileytype == NEUTRAL) dy = 0;
     p->DrawPixel(cx + dx, mouthY + dy, COLORED);
+    p->DrawPixel(cx + dx, mouthY + dy+1, COLORED); //2 line smile
   }
 }
 
