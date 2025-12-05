@@ -321,12 +321,27 @@ void setup()
       paint.Clear(UNCOLORED);
 
       // Date: top-left
-      paint.DrawStringAt(0, 0, date_string, &Font12, COLORED);
+      paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
 
       // Username: center-center (rough placement for 152x296 logical size)
       // Use NFC user_name buffer instead of hardcoded string
       // Approx center: x ~ 10, y ~ (296 - 24) / 2 ≈ 136
-      paint.DrawStringAt(10, 70, (char*)user_name, &Font24, COLORED);
+
+      int screen_width = 296;
+      int screen_height = 152;
+
+
+      int font_height = 20;
+      int font_width  = 14;
+
+      int box_x0 = 9;
+      int box_y0 = 39;
+      int box_x1 = screen_width - box_x0;
+      int box_y1 = box_y0 + font_height +2;
+
+      // Draw box outline
+      paint.DrawFilledRectangle(box_x0, box_y0, box_x1, box_y1, COLORED);
+      paint.DrawStringAt((screen_width - (font_width * user_name_length))/2, box_y0+2, (char*)user_name, &Font20, UNCOLORED);
 
       // Smiley: center-bottom
       // Place near bottom: y ~ 296 - 40
