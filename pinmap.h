@@ -55,6 +55,8 @@
 
     #define FW_REV                       1
 
+
+
     #define RTC_I2C_ADDR 0x52   //only one we find when disabling the ldo/dcdc since connected straight to vbat
     #define BMV080_ADDR 0x57   // SparkFun BMV080 Breakout defaults to 0x57 (TBD)
 

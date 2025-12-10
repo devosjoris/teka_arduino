@@ -29,12 +29,13 @@
 #define EPDIF_H
 
 #include <Arduino.h>
+#include "pinmap.h"
 
 // Pin definition
-#define RST_PIN         12 //white
-#define DC_PIN          4 //green
-#define CS_PIN          13 //orange
-#define BUSY_PIN        27 //purple
+#define RST_PIN         PIN_RST //white
+#define DC_PIN          PIN_DC //green
+#define CS_PIN          PIN_CS_A //orange
+#define BUSY_PIN        PIN_BUSY //purple
 #define PWR_PIN         25  //na always high...
 
 class EpdIf {

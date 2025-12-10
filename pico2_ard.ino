@@ -373,8 +373,8 @@ void setup()
     //power up the dcdc and the 3v3 regulator
     // pinMode(PIN_DCDC_EN, OUTPUT);
     // digitalWrite(PIN_DCDC_EN, HIGH);
-    // pinMode(PIN_V3V_CTRL, OUTPUT);
-    // digitalWrite(PIN_V3V_CTRL, HIGH);
+    pinMode(PIN_V3V_CTRL, OUTPUT);
+    digitalWrite(PIN_V3V_CTRL, HIGH);
     delay(10); //let the voltages stabilize
 
 
