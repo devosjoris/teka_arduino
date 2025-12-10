@@ -2,6 +2,8 @@
 
 #include <Wire.h>
 #include "SparkFun_BMV080_Arduino_Library.h" // CTRL+Click here to get the library: http://librarymanager/All#SparkFun_BMV080
+#include <RV3028C7.h>
+
 
 #include <SPI.h>
 #include "epd2in66.h"
@@ -18,8 +20,8 @@ int64_t last_sensor_readout_us =0;
 #define NEUTRAL 2
 
 //RTC
-
-uint32_t unix_timestamp = 1764430908;
+uint32_t unix_timestamp = 0;
+RV3028C7 rtc;
 
 #include <time.h>
 
@@ -324,6 +326,23 @@ void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
   }
 }
 
+// Initialize RV-3028 RTC, set it once to the compile time,
+// and store the current Unix time in the global unix_timestamp.
+void setup_rtc()
+{
+  while (rtc.begin() == false) {
+    Serial.println("Failed to detect RV-3028-C7!");
+    delay(5000);
+  }
+}
+
+
+void synch_rtc(uint32_t secondsSinceEpoch){
+  rtc.setUnixTimestamp(secondsSinceEpoch, true); // true to also set the esp32 internal timekeeping registers
+  rtc.synchronize();
+}
+
+
 void i2c_scan() {
   byte error, address;
   int nDevices;
@@ -367,18 +386,31 @@ void setup()
 {
     Serial.begin(115200);
     Wire.begin();
+    
 
-
+  //power up the dcdc and the 3v3 regulator
 
     //power up the dcdc and the 3v3 regulator
-    // pinMode(PIN_DCDC_EN, OUTPUT);
-    // digitalWrite(PIN_DCDC_EN, HIGH);
+    pinMode(PIN_DCDC_EN, OUTPUT);
+    digitalWrite(PIN_DCDC_EN, HIGH);
     pinMode(PIN_V3V_CTRL, OUTPUT);
     digitalWrite(PIN_V3V_CTRL, HIGH);
-    delay(10); //let the voltages stabilize
+    delay(100); //let the voltages stabilize
 
-
+    // Scan I2C bus and print all detected devices
     i2c_scan();
+
+
+      // Initialize the RV-3028 RTC and set/read its time
+    setup_rtc();
+    // synch_rtc(1762359245); // Set to a fixed time for testing: 2024-09-05 12:00:45 UTC
+
+    for(int i =0; i<5; i++){
+      delay(1000);
+      Serial.println(rtc.getCurrentDateTime());
+      Serial.print(F("Unix timestamp: "));
+      Serial.println(rtc.getUnixTimestamp());
+    }
 
 
     setup_tag();
