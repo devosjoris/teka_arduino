@@ -1,3 +1,5 @@
+#include "pinmap.h"
+
 #include <Wire.h>
 #include "SparkFun_BMV080_Arduino_Library.h" // CTRL+Click here to get the library: http://librarymanager/All#SparkFun_BMV080
 
@@ -59,7 +61,6 @@ UDOUBLE time_now_s;
 
 
 SparkFunBMV080 bmv080; // Create an instance of the BMV080 class
-#define BMV080_ADDR 0x57  // SparkFun BMV080 Breakout defaults to 0x57
 
 // Some Dev boards have their QWIIC connector on Wire or Wire1
 // This #ifdef will help this sketch work across more products
@@ -82,29 +83,7 @@ SFE_ST25DV64KC tag;
 
 
 
-//ALL 32 bit numbers
 
-#define MEM_PTR_TIMESTAMP           0
-#define MEM_VAL_TIMESTAMP           4
-#define MEM_PTR_LAST_WRITE          8
-#define MEM_PTR_LAST_READ           12
-
-#define MEM_VAL_MEASURE_MODE        16
-#define MEM_VAL_WARNING             20    // MAX MIN(5000, MEM_VAL_LIMIT) 
-#define MEM_VAL_LIMIT               24    // MAX 7000
-
-#define MEM_VAL_NEWTIMESTAMP        28    //set by app
-#define MEM_VAL_NEWSETTINGS         32    //set by app
-
-#define MEM_VAL_USER_NAME_LENGTH    44
-#define MEM_VAL_USER_NAME           48
-
-#define MEM_VAL_DATA_VALID          92
-
-#define MEM_VAL_DATA_START          (100 *2) 
-#define MEM_VAL_DATA_END            (8188) //last bit
-
-#define FW_REV                       1
 
 int GLOBAL_ERROR =0;
 uint16_t current_data_add     = MEM_VAL_DATA_START;
@@ -345,11 +324,62 @@ void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
   }
 }
 
+void i2c_scan() {
+  byte error, address;
+  int nDevices;
+
+  Serial.println("Scanning...");
+
+  nDevices = 0;
+  for(address = 1; address < 127; address++ )
+  {
+    // The i2c_scanner uses the return value of
+    // the Write.endTransmisstion to see if
+    // a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0)
+    {
+      Serial.print("I2C device found at address 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.print(address,HEX);
+      Serial.println("  !");
+
+      nDevices++;
+    }
+    else if (error == 4)
+    {
+      Serial.print("Unknown error at address 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.println(address,HEX);
+    }
+  }
+  if (nDevices == 0)
+    Serial.println("No I2C devices found\n");
+  else
+    Serial.println("done\n");
+}
 
 void setup()
 {
     Serial.begin(115200);
     Wire.begin();
+
+
+
+    //power up the dcdc and the 3v3 regulator
+    // pinMode(PIN_DCDC_EN, OUTPUT);
+    // digitalWrite(PIN_DCDC_EN, HIGH);
+    // pinMode(PIN_V3V_CTRL, OUTPUT);
+    // digitalWrite(PIN_V3V_CTRL, HIGH);
+    delay(10); //let the voltages stabilize
+
+
+    i2c_scan();
+
 
     setup_tag();
     init_memspace(); //on a fresh device:
