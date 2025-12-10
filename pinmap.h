@@ -15,7 +15,7 @@
     #define PIN_DIN             11
     #define PIN_SCLK            12
 
-    #define PIN_LEDB            14
+    #define PIN_LED_B           14
     #define PIN_WP              21
     #define PIN_LED_G           47
     #define PIN_LED_R           48
@@ -56,6 +56,11 @@
     #define FW_REV                       1
 
 
+
+// I2C device found at address 0x2D  !  nfc
+// I2C device found at address 0x52  !  rtc
+// I2C device found at address 0x53  !  nfc
+// I2C device found at address 0x57  ! nfc
 
     #define RTC_I2C_ADDR 0x52   //only one we find when disabling the ldo/dcdc since connected straight to vbat
     #define BMV080_ADDR 0x57   // SparkFun BMV080 Breakout defaults to 0x57 (TBD)

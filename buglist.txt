@@ -1,0 +1,29 @@
+
+//*********************************************************BUG1****************************************************************************
+//led diode only the red is working
+//reason is pinout is swapped
+//we have:
+
+
+//diode datasheet:
+//          |------|>------R
+// COMMON   |------|>------G
+//          |------|>------B
+
+
+//schematic: common is wired to red driver, R is gnd
+// G is G drive
+// B is B drive
+
+//to turn the led on, we have to set the common (can be done with RED driver)
+//issue is that the red led works with lower voltaege compared to gb so it will take all the current -> only red is seen
+
+//to fix this we should ty the common to supply and then RGB to drivers...
+
+
+
+//*********************************************************BUG2****************************************************************************
+The eeprom should have A2 set to vcc to guarantee it's operation according to datasheet
+//possible that it still would work but since we only added this as a spare -> don't worry about it...
+
+

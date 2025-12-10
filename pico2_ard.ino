@@ -326,6 +326,17 @@ void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
   }
 }
 
+// Simple RGB LED control: values are 0 = off, non-zero = on
+// NOTE: On this board only PIN_LED_B is a valid GPIO.
+// PIN_LED_R and PIN_LED_G are currently mapped to invalid pins (47, 48)
+// so we only drive the blue LED for now.
+void setRgbLed(uint8_t r, uint8_t g, uint8_t b)
+{
+  (void)r;
+  (void)g;
+  digitalWrite(PIN_LED_B, (b == 0) ? LOW : HIGH);
+}
+
 // Initialize RV-3028 RTC, set it once to the compile time,
 // and store the current Unix time in the global unix_timestamp.
 void setup_rtc()
@@ -387,15 +398,16 @@ void setup()
     Serial.begin(115200);
     Wire.begin();
     
-
-  //power up the dcdc and the 3v3 regulator
+  // Configure RGB LED pin (only blue is valid on this board)
+    pinMode(PIN_LED_B, OUTPUT);
+  setRgbLed(0, 0, 0); // start with LED off
 
     //power up the dcdc and the 3v3 regulator
     pinMode(PIN_DCDC_EN, OUTPUT);
     digitalWrite(PIN_DCDC_EN, HIGH);
     pinMode(PIN_V3V_CTRL, OUTPUT);
     digitalWrite(PIN_V3V_CTRL, HIGH);
-    delay(100); //let the voltages stabilize
+    delay(10000); //let the voltages stabilize
 
     // Scan I2C bus and print all detected devices
     i2c_scan();
