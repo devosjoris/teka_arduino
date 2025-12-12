@@ -398,16 +398,17 @@ void setup()
     Serial.begin(115200);
     Wire.begin();
     
-  // Configure RGB LED pin (only blue is valid on this board)
+    // Configure RGB LED pin (only blue is valid on this board)
+    pinMode(PIN_CS_B, INPUT);  //unused but make sure it does not interfer with CS_A
     pinMode(PIN_LED_B, OUTPUT);
-  setRgbLed(0, 0, 0); // start with LED off
+    setRgbLed(0, 0, 0); // start with LED off
 
     //power up the dcdc and the 3v3 regulator
     pinMode(PIN_DCDC_EN, OUTPUT);
     digitalWrite(PIN_DCDC_EN, HIGH);
     pinMode(PIN_V3V_CTRL, OUTPUT);
     digitalWrite(PIN_V3V_CTRL, HIGH);
-    delay(10000); //let the voltages stabilize
+    delay(1000); //let the voltages stabilize
 
     // Scan I2C bus and print all detected devices
     i2c_scan();
@@ -443,9 +444,9 @@ void setup()
     paint.SetRotate(ROTATE_90);
     
   #if 1
-    epd.Init_Partial();
-    epd.Clear();
-    Serial.print("partial display___ \r\n ");
+    // epd.Init_Partial();
+    // epd.Clear();
+    Serial.print("full display___ \r\n ");
     UBYTE i;
     time_start_ms = millis();
     for(i=0; i<1; i++) {
@@ -455,21 +456,22 @@ void setup()
       paint.Clear(UNCOLORED);
 
       // Date: top-left
-      paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
+       paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
 
       int box_x0 = 9;
       int box_y0 = 30;
 
       drawStringCenter(&paint, &Font16, box_x0, box_y0, (char*)user_name, user_name_length, true);
 
-      // Smiley: center-bottom
-      // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
+      // // Smiley: center-bottom
+      // // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
       drawSmiley(&paint, SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, HAPPY);
       drawSmiley(&paint, SCREEN_WIDTH/2, SCREEN_HEIGHT * 2/3, 30, NEUTRAL);
       drawSmiley(&paint, 4*SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, SAD);
 
       Serial.print("refresh------\r\n ");
-      epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
+      // epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
+      epd.DisplayFrame(paint.GetImage());
     }
   #endif
 

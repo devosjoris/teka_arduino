@@ -156,6 +156,7 @@ int Epd::Init_Partial(void) {
  */
 void Epd::SendCommand(unsigned char command) {
     DigitalWrite(dc_pin, LOW);
+    delayMicroseconds(1);
     SpiTransfer(command);
 }
 
@@ -164,6 +165,7 @@ void Epd::SendCommand(unsigned char command) {
  */
 void Epd::SendData(unsigned char data) {
     DigitalWrite(dc_pin, HIGH);
+    delayMicroseconds(1);
     SpiTransfer(data);
 }
 
