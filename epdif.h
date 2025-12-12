@@ -36,7 +36,7 @@
 #define DC_PIN          PIN_DC //green
 #define CS_PIN          PIN_CS_A //orange
 #define BUSY_PIN        PIN_BUSY //purple
-#define PWR_PIN         25  //na always high...
+#define PWR_PIN         38  //na always high...
 
 class EpdIf {
 public:

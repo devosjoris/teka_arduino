@@ -27,3 +27,13 @@ The eeprom should have A2 set to vcc to guarantee it's operation according to da
 //possible that it still would work but since we only added this as a spare -> don't worry about it...
 
 
+//parts to fix:
+503566-1302 painfull to solder::: connector for the bmv080
+https://www.mouser.be/ProductDetail/Molex/503566-1302?qs=0lSvoLzn4L9F4ntKad1%252BKA%3D%3D&srsltid=AfmBOoq4Hl2kSDpJqXw1C2Yj1ZzHEwIjBPv3QcT_4FO4a1LQSWd5hMTh
+
+
+LED?
+
+
+pogo progrq,,eeprom
+
