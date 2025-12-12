@@ -63,7 +63,7 @@
 // I2C device found at address 0x57  ! nfc
 
     #define RTC_I2C_ADDR 0x52   //only one we find when disabling the ldo/dcdc since connected straight to vbat
-    #define BMV080_ADDR 0x57   // SparkFun BMV080 Breakout defaults to 0x57 (TBD)
+    #define BMV080_ADDR 0x56   // SparkFun BMV080 Breakout defaults to 0x57 (TBD)
 
     #define EEPROM_I2C_ADDR 0x53 
     // For most I²C library implementations, the relevant 7-bit addresses are:
@@ -72,5 +72,8 @@
     //todo conflice with BMV080?
 
     #define ST25_ADDR 0x57  // SparkFun BMV080 Breakout defaults to 0x57
+                            //so conflicts with the nfc!!!
+
+
 
 #endif

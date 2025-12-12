@@ -37,3 +37,12 @@ LED?
 
 pogo progrq,,eeprom
 
+
+
+//*********************************************************BUG3****************************************************************************
+bmv080 and NFC share the same i2c adress: 0x57 
+AB0 is grounded (R5 to button of ground to fix it)
+also updated omn the bmv080 breakout... -> i2c scan at 0x56 works...
+black red white gray ...
+
+

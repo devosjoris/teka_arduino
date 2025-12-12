@@ -245,8 +245,8 @@ void setup_bmv080(){
   if(1){
     if(bmv080.setDutyCyclingPeriod(duty_cycling_period) == true)
     {
-        Serial.println("BMV080 set to duty cycle period");
-        Serial.println(duty_cycling_period);
+        Serial.println("BMV080 set to duty cycle periodxxx");
+        Serial.println(bmv080.dutyCyclingPeriod());
     }
     else
     {
@@ -440,7 +440,6 @@ void setup()
     Serial.print("2.66inch e-Paper demo...\r\n ");
     Serial.print("e-Paper Clear...\r\n ");
     epd.Clear();  
-
     paint.SetRotate(ROTATE_90);
     
   #if 1
@@ -471,8 +470,25 @@ void setup()
 
       Serial.print("refresh------\r\n ");
       // epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
+
+      // for (int y = 0; y < paint.GetHeight(); y++) {
+      //   for (int x = 0; x < paint.GetWidth(); x++) {
+      //     int idx = (x + y * paint.GetWidth()) / 8;
+      //     uint8_t mask = 0x80 >> (x % 8);
+
+      //     bool bitIs1 = (paint.GetImage()[idx] & mask) != 0;
+
+      //     // With IF_INVERT_COLOR=1 in epdpaint.cpp:
+      //     // colored=1 sets bit to 1, colored=0 clears to 0.
+      //     // In your sketch: COLORED=0 (black), UNCOLORED=1 (white)
+      //     bool isWhite = bitIs1;
+      //     Serial.print(isWhite ? ' ' : '.'); // '.' = black pixel
+      //   }
+      //   Serial.println();
+      // }
       epd.DisplayFrame(paint.GetImage());
     }
+    // epd.Sleep();
   #endif
 
 
@@ -497,6 +513,8 @@ void loop()
     if(bmv080.readSensor())
     {
         float pm25 = bmv080.PM25();  //µg/m³ teka spec says ,max is 7mg/m3 so 7000
+        Serial.println("FLOAT PM2.5: ");
+        Serial.print(pm25);
         if(pm25 > 7000){
           pm25 = 7000;
         }
