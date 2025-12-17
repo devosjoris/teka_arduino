@@ -1,0 +1,81 @@
+#include <Arduino.h>
+#include <Wire.h>
+
+#include "SparkFun_ST25DV64KC_Arduino_Library.h"
+
+#include "tag_support.h"
+
+extern int GLOBAL_ERROR;
+
+uint32_t read_int_tag(SFE_ST25DV64KC* tag, int address)
+{
+  uint32_t result = 0;
+  uint8_t tagRead[4];
+  if((address % 4) == 0){
+    tag->readEEPROM(address, tagRead, 4);
+    for(uint8_t i =0; i<4; i++){
+      result += ((tagRead[i]) << (8 * i));
+    }
+    return result;
+  }
+  GLOBAL_ERROR = 1;
+  return 0;
+}
+
+void write_int_tag(SFE_ST25DV64KC* tag, int address, uint32_t value)
+{
+  //unprotect?
+  uint32_t result = 0;
+  uint8_t tagWrite[4];
+  uint32_t tempvalue = value;
+  if((address % 4) == 0){
+    for(uint8_t i =0; i<4; i++){
+      tagWrite[i] = ((value) >> i*8) & 0xFF;
+    }
+    tag->writeEEPROM(address, tagWrite, 4);
+    return;
+  }
+  GLOBAL_ERROR = 1;
+}
+
+void write_string_tag(SFE_ST25DV64KC* tag, int address, uint8_t * stringtowrite, uint8_t string_len)
+{
+  //unprotect?
+  if((address % 4) == 0){
+    tag->writeEEPROM(address, stringtowrite, string_len);
+    return;
+  }
+  GLOBAL_ERROR = 1;
+}
+
+void read_string_tag(SFE_ST25DV64KC* tag, int address, uint8_t * stringtoread, uint8_t string_len)
+{
+  //unprotect?
+  if((address % 4) == 0){
+    tag->readEEPROM(address, stringtoread, string_len);
+    return;
+  }
+  GLOBAL_ERROR = 1;
+}
+
+
+void setup_tag(SFE_ST25DV64KC* tag){
+  if (!tag->begin(Wire))
+  {
+    Serial.println(F("ST25 not detected. Freezing..."));
+    return;
+  }
+
+  Serial.println(F("ST25 connected."));
+
+  // -=-=-=-=-=-=-=-=-
+
+  Serial.println(F("Opening I2C security session with default password (all zeros)."));
+  uint8_t password[8] = {0x0}; // Default password is all zeros
+  tag->openI2CSession(password);
+
+  Serial.print(F("I2C session is "));
+  Serial.println(tag->isI2CSessionOpen() ? "opened." : "closed.");
+
+
+}

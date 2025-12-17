@@ -13,7 +13,17 @@
 #include "esp_sleep.h"
 #include "esp_timer.h"
 
+#include "tag_support.h"
+
+#include <Preferences.h>
+
 int64_t last_sensor_readout_us =0;
+int64_t last_nvs_write_us = 0;
+
+Preferences prefs;
+static const char* NVS_NS = "senslog";
+static const uint32_t NVS_MAGIC = 0x501D0001u;
+static const uint16_t NVS_RING_SIZE = 256; // entries; each entry is one uint32_t packed value
 
 #define SAD 0
 #define HAPPY 1
@@ -93,6 +103,42 @@ uint8_t measurement_mode      = 1;
 uint8_t user_name_length      = 0;
 uint8_t user_name[30];
 
+void nvs_init()
+{
+  if (!prefs.begin(NVS_NS, false)) {
+    Serial.println("NVS begin failed");
+    GLOBAL_ERROR = 1;
+    return;
+  }
+
+  uint32_t magic = prefs.getUInt("magic", 0);
+  if (magic != NVS_MAGIC) {
+    prefs.clear();
+    prefs.putUInt("magic", NVS_MAGIC);
+    prefs.putUShort("idx", 0);
+    prefs.putUInt("last", 0);
+  }
+}
+
+void nvs_log_packed(uint32_t packedValue)
+{
+  // Flash wear guard: write at most once per minute
+  int64_t now_us = esp_timer_get_time();
+  if (last_nvs_write_us != 0 && (now_us - last_nvs_write_us) < (60LL * 1000LL * 1000LL)) {
+    return;
+  }
+
+  uint16_t idx = prefs.getUShort("idx", 0);
+  char key[8];
+  snprintf(key, sizeof(key), "d%03u", (unsigned)(idx % NVS_RING_SIZE));
+
+  prefs.putUInt(key, packedValue);
+  prefs.putUInt("last", packedValue);
+  prefs.putUShort("idx", (uint16_t)((idx + 1) % NVS_RING_SIZE));
+
+  last_nvs_write_us = now_us;
+}
+
 uint32_t abs_x(int value){
   return (value < 0) ? -value : value;
 }
@@ -122,9 +168,9 @@ uint16_t find_write_addr(uint16_t guess_addr){
     if(temp_addr >= MEM_VAL_DATA_END){
       temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
     }
-    if(read_int_tag(temp_addr) == 0xC1EAC1EA){
-      if(abs_x(temp_addr - read_int_tag(MEM_PTR_LAST_WRITE)) > 100){
-        write_int_tag(MEM_PTR_LAST_WRITE, temp_addr);
+    if(read_int_tag(&tag, temp_addr) == 0xC1EAC1EA){
+      if(abs_x(temp_addr - read_int_tag(&tag, MEM_PTR_LAST_WRITE)) > 100){
+        write_int_tag(&tag, MEM_PTR_LAST_WRITE, temp_addr);
       }
       return temp_addr;
     }
@@ -136,91 +182,40 @@ uint16_t find_write_addr(uint16_t guess_addr){
 
 void reset_memspace(){
     Serial.print("INIT");
-    write_int_tag(MEM_PTR_LAST_WRITE, MEM_VAL_DATA_START);
-    write_int_tag(MEM_PTR_LAST_READ,  MEM_VAL_DATA_START);
+  write_int_tag(&tag, MEM_PTR_LAST_WRITE, MEM_VAL_DATA_START);
+  write_int_tag(&tag, MEM_PTR_LAST_READ,  MEM_VAL_DATA_START);
 
-    write_int_tag(MEM_VAL_DATA_START, 0xC1EAC1EA); //empty field -> ready to write:::
+  write_int_tag(&tag, MEM_VAL_DATA_START, 0xC1EAC1EA); //empty field -> ready to write:::
     
-    write_int_tag(MEM_VAL_USER_NAME_LENGTH, 23);
-    write_string_tag(MEM_VAL_USER_NAME, (uint8_t*) "USE APP TO SET USERNAME", 23);
+  write_int_tag(&tag, MEM_VAL_USER_NAME_LENGTH, 23);
+  write_string_tag(&tag, MEM_VAL_USER_NAME, (uint8_t*) "USE APP TO SET USERNAME", 23);
 
-    write_int_tag(MEM_VAL_MEASURE_MODE, 0x0001);     
-    write_int_tag(MEM_VAL_WARNING, 5000);
-    write_int_tag(MEM_VAL_LIMIT, 7000);
+  write_int_tag(&tag, MEM_VAL_MEASURE_MODE, 0x0001);     
+  write_int_tag(&tag, MEM_VAL_WARNING, 5000);
+  write_int_tag(&tag, MEM_VAL_LIMIT, 7000);
 
-    write_int_tag(MEM_VAL_DATA_VALID, (((0x501d) << 16) + FW_REV));
+  write_int_tag(&tag, MEM_VAL_DATA_VALID, (((0x501d) << 16) + FW_REV));
 }
 
 void init_memspace(){
-  if(read_int_tag(MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
+  if(read_int_tag(&tag, MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
     reset_memspace();
   }
   Serial.print("RESTORE");
-  current_data_add = read_int_tag(MEM_PTR_LAST_WRITE);
+  current_data_add = read_int_tag(&tag, MEM_PTR_LAST_WRITE);
   current_data_add = find_write_addr(current_data_add);
-  measurement_mode = read_int_tag(MEM_VAL_MEASURE_MODE);
+  measurement_mode = read_int_tag(&tag, MEM_VAL_MEASURE_MODE);
   Serial.println("measurement_mode");
   Serial.println(measurement_mode);
 
   if(measurement_mode > 2) GLOBAL_ERROR = 1; //invalid value 
-  user_name_length = read_int_tag(MEM_VAL_USER_NAME_LENGTH);
+  user_name_length = read_int_tag(&tag, MEM_VAL_USER_NAME_LENGTH);
   if(user_name_length > 40) GLOBAL_ERROR = 1; //invalid value 
-  else                      read_string_tag(MEM_VAL_USER_NAME, user_name, user_name_length);
+  else                      read_string_tag(&tag, MEM_VAL_USER_NAME, user_name, user_name_length);
   Serial.print("INIT/RESTORE DONE");
   if(GLOBAL_ERROR){
     reset_memspace();
   }
-}
-
-uint32_t read_int_tag(int address)
-{
-  uint32_t result = 0;
-  uint8_t tagRead[4];
-  if((address % 4) == 0){
-    tag.readEEPROM(address, tagRead, 4);
-    for(uint8_t i =0; i<4; i++){
-      result += ((tagRead[i]) << (8 * i));
-    }
-    return result;
-  }
-  GLOBAL_ERROR = 1;
-  return 0;
-}
-
-void write_int_tag(int address, uint32_t value)
-{
-  //unprotect?
-  uint32_t result = 0;
-  uint8_t tagWrite[4];
-  uint32_t tempvalue = value;
-  if((address % 4) == 0){
-    for(uint8_t i =0; i<4; i++){
-      tagWrite[i] = ((value) >> i*8) & 0xFF;
-    }
-    tag.writeEEPROM(address, tagWrite, 4);
-    return;
-  }
-  GLOBAL_ERROR = 1;
-}
-
-void write_string_tag(int address, uint8_t * stringtowrite, uint8_t string_len)
-{
-  //unprotect?
-  if((address % 4) == 0){
-    tag.writeEEPROM(address, stringtowrite, string_len);
-    return;
-  }
-  GLOBAL_ERROR = 1;
-}
-
-void read_string_tag(int address, uint8_t * stringtoread, uint8_t string_len)
-{
-  //unprotect?
-  if((address % 4) == 0){
-    tag.readEEPROM(address, stringtoread, string_len);
-    return;
-  }
-  GLOBAL_ERROR = 1;
 }
 
 
@@ -264,27 +259,6 @@ void setup_bmv080(){
         Serial.println("Error setting BMV080 mode");
     }
   }
-}
-
-void setup_tag(){
-  if (!tag.begin(Wire))
-  {
-    Serial.println(F("ST25 not detected. Freezing..."));
-    return;
-  }
-
-  Serial.println(F("ST25 connected."));
-
-  // -=-=-=-=-=-=-=-=-
-
-  Serial.println(F("Opening I2C security session with default password (all zeros)."));
-  uint8_t password[8] = {0x0}; // Default password is all zeros
-  tag.openI2CSession(password);
-
-  Serial.print(F("I2C session is "));
-  Serial.println(tag.isI2CSessionOpen() ? "opened." : "closed.");
-
-
 }
 
 void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
@@ -413,6 +387,9 @@ void setup()
     // Scan I2C bus and print all detected devices
     i2c_scan();
 
+    // Initialize ESP32 internal persistent storage (NVS)
+    nvs_init();
+
 
       // Initialize the RV-3028 RTC and set/read its time
     setup_rtc();
@@ -426,7 +403,7 @@ void setup()
     }
 
 
-    setup_tag();
+  setup_tag(&tag);
     init_memspace(); //on a fresh device:
 
     setup_bmv080(); //do after tag since the memspace sets the duty cycle...
@@ -487,6 +464,9 @@ void setup()
       //   Serial.println();
       // }
       epd.DisplayFrame(paint.GetImage());
+
+      // write_int_tag(&tag, MEM_VAL_TIMESTAMP, 1765989831);
+      // write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0x0000501D);
     }
     // epd.Sleep();
   #endif
@@ -496,18 +476,24 @@ void setup()
 
 void loop()
 {
-    if(read_int_tag(MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
+    //phone sets new timestamp on connect -> ...
+    if(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
       //new timestamp set by the app, add this timestamp to the ringbuffer...
       Serial.println("NEW_TIMESTAMP");
       current_data_add = find_write_addr(current_data_add);
-      int timestamp = read_int_tag(MEM_VAL_TIMESTAMP); //this will alwasy have the lsb set, this is beeing handled by the app...
+      int timestamp = read_int_tag(&tag, MEM_VAL_TIMESTAMP); //this will alwasy have the lsb set, this is beeing handled by the app...
       if((timestamp %2 ==1) && timestamp > 1762359245){
-        write_int_tag(current_data_add + 4, 0xC1EAC1EA);
-        write_int_tag(current_data_add, timestamp);
+        // Use the received Unix timestamp to set the RTC absolute time.
+        // The LSB is used as a marker, so mask it off for the RTC.
+        uint32_t epochSec = ((uint32_t)timestamp);
+        synch_rtc(epochSec);
+        unix_timestamp = epochSec;
+
+        write_int_tag(&tag, current_data_add + 4, 0xC1EAC1EA);
+        write_int_tag(&tag, current_data_add, timestamp);
         current_data_add=current_data_add + 4; //dont care about overflow, this is handled by the find_write_addr;
       }
-      write_int_tag(MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
-
+      write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
     }
 
     if(bmv080.readSensor())
@@ -534,8 +520,11 @@ void loop()
         Serial.println("timestamp");
         Serial.println(relative_timestamp);
         //find location to write
-        write_int_tag(current_data_add + 4, 0xC1EAC1EA); //CLEAN means 
-        write_int_tag(current_data_add, (pm25_int << 1) +(relative_timestamp  << 16)); //lsb =1 means a timestamp value from nfc i.o. a sensor readout...
+        write_int_tag(&tag, current_data_add + 4, 0xC1EAC1EA); //CLEAN means 
+        uint32_t packed = (uint32_t)(pm25_int << 1) + (uint32_t)(relative_timestamp << 16);
+        write_int_tag(&tag, current_data_add, packed); //lsb =1 means a timestamp value from nfc i.o. a sensor readout...
+        // Also store into ESP32 internal flash (NVS) for redundancy
+        nvs_log_packed(packed);
         last_sensor_readout_us = since_boot_us;
         current_data_add=current_data_add + 4; //dont care about overflow, this is handled by the find_write_addr;
     }
