@@ -15,6 +15,8 @@
 
 #include "tag_support.h"
 
+#include "nfc_ota.h"
+
 #include <Preferences.h>
 
 int64_t last_sensor_readout_us =0;
@@ -406,6 +408,9 @@ void setup()
   setup_tag(&tag);
     init_memspace(); //on a fresh device:
 
+    // Enable OTA-over-NFC (ST25DV mailbox streaming)
+    nfc_ota_setup(&tag);
+
     setup_bmv080(); //do after tag since the memspace sets the duty cycle...
 
     Epd epd;
@@ -476,6 +481,13 @@ void setup()
 
 void loop()
 {
+    // If an OTA transfer is in progress, dedicate the loop to it.
+    // (Firmware update will reboot the ESP32 when complete.)
+    if (nfc_ota_poll()) {
+      delay(10);
+      return;
+    }
+
     //phone sets new timestamp on connect -> ...
     if(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
       //new timestamp set by the app, add this timestamp to the ringbuffer...
