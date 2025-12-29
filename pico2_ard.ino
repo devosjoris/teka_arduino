@@ -485,7 +485,7 @@ void loop()
     // (Firmware update will reboot the ESP32 when complete.)
     if (nfc_ota_poll()) {
       delay(10);
-      return;
+      return; //will rerun the loop:::
     }
 
     //phone sets new timestamp on connect -> ...
