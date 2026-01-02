@@ -493,7 +493,7 @@ void setup()
 
       // Initialize the RV-3028 RTC and set/read its time
     setup_rtc();
-    synch_rtc(1767370633u); //set to compile time initially
+    // synch_rtc(1767370633u); //init time...
 
 
     setup_tag(&tag);
