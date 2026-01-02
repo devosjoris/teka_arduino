@@ -303,14 +303,14 @@ void drawSmiley(Paint* p, int cx, int cy, int radius, int smileytype) {
 }
 
 // Simple RGB LED control: values are 0 = off, non-zero = on
-// NOTE: On this board only PIN_LED_B is a valid GPIO.
-// PIN_LED_R and PIN_LED_G are currently mapped to invalid pins (47, 48)
-// so we only drive the blue LED for now.
+//we had to change led so mapping is different the PIN_LED_x is the name in the schematics but
+// PIN_LED_R is the blue led on the board...
+// PIN_LED_B is the red led on the board...
 void setRgbLed(uint8_t r, uint8_t g, uint8_t b)
 {
-  (void)r;
-  (void)g;
-  digitalWrite(PIN_LED_B, (b == 0) ? LOW : HIGH);
+  digitalWrite(PIN_LED_R, (b == 0) ? LOW : HIGH);
+  digitalWrite(PIN_LED_G, (g == 0) ? LOW : HIGH);
+  digitalWrite(PIN_LED_B, (r == 0) ? LOW : HIGH);
 }
 
 // Initialize RV-3028 RTC, set it once to the compile time,
@@ -377,7 +377,18 @@ void setup()
     // Configure RGB LED pin (only blue is valid on this board)
     pinMode(PIN_CS_B, INPUT);  //unused but make sure it does not interfer with CS_A
     pinMode(PIN_LED_B, OUTPUT);
-    setRgbLed(0, 0, 0); // start with LED off
+    pinMode(PIN_LED_R, OUTPUT);
+    pinMode(PIN_LED_G, OUTPUT);
+
+    if(0){
+      setRgbLed(1, 0, 0); // start with LED off
+      delay(1000);
+      setRgbLed(0, 1, 0); // start with LED off
+      delay(1000);
+      setRgbLed(0, 0, 1); // start with LED off
+      delay(1000);
+      setRgbLed(0, 0, 0); // start with LED off
+    }
 
     //power up the dcdc and the 3v3 regulator
     pinMode(PIN_DCDC_EN, OUTPUT);

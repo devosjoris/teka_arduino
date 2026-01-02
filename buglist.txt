@@ -5,7 +5,7 @@
 //we have:
 
 
-//diode datasheet:
+//SMD diode datasheet BUG:
 //          |------|>------R
 // COMMON   |------|>------G
 //          |------|>------B
@@ -18,7 +18,7 @@
 //to turn the led on, we have to set the common (can be done with RED driver)
 //issue is that the red led works with lower voltaege compared to gb so it will take all the current -> only red is seen
 
-//to fix this we should ty the common to supply and then RGB to drivers...
+//fix is to replace the led with a tht variant that has a common cathode (https://www.sparkfun.com/rgb-led-clear-lens-common-cathode-5mm.html)
 
 
 
