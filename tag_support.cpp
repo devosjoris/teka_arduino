@@ -13,6 +13,15 @@ uint32_t read_int_tag(SFE_ST25DV64KC* tag, int address)
   uint8_t tagRead[4];
   if((address % 4) == 0){
     tag->readEEPROM(address, tagRead, 4);
+    Serial.print(tagRead[0], HEX);
+    Serial.print(" ");
+    Serial.print(tagRead[1], HEX);  
+    Serial.print(" ");
+    Serial.print(tagRead[2], HEX);
+    Serial.print(" ");
+    Serial.print(tagRead[3], HEX);
+    Serial.print("--> ");
+
     for(uint8_t i =0; i<4; i++){
       result += ((tagRead[i]) << (8 * i));
     }
@@ -78,4 +87,37 @@ void setup_tag(SFE_ST25DV64KC* tag){
   Serial.println(tag->isI2CSessionOpen() ? "opened." : "closed.");
 
 
+}
+
+void dump_tag_words64(SFE_ST25DV64KC* tag, int startAddress)
+{
+  if (tag == nullptr)
+  {
+    Serial.println(F("dump_tag_words64: tag=null"));
+    return;
+  }
+  if ((startAddress % 4) != 0)
+  {
+    Serial.println(F("dump_tag_words64: startAddress not 4-byte aligned"));
+    return;
+  }
+
+  Serial.print(F("NFC EEPROM dump: 64 words from 0x"));
+  Serial.println(startAddress, HEX);
+
+  for (int i = 0; i < 64; i++)
+  {
+    int addr = startAddress + (i * 4);
+    uint32_t v = read_int_tag(tag, addr);
+
+    // Format: 0x0000: DEADBEEF
+    Serial.print(addr);
+    Serial.print(": ");
+    // zero-pad to 8 hex digits
+    for(int j = 0; j < 4; j++){
+      Serial.print((v >> (8*j)) & 0xFF, HEX);
+      Serial.print(" ");
+      }
+    Serial.println("");
+  }
 }

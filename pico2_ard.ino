@@ -15,7 +15,7 @@
 
 #include "tag_support.h"
 
-#include "nfc_ota.h"
+// #include "nfc_ota.h"
 
 #include <Preferences.h>
 
@@ -183,7 +183,7 @@ uint16_t find_write_addr(uint16_t guess_addr){
 }
 
 void reset_memspace(){
-    Serial.print("INIT");
+  Serial.print("INIT");
   write_int_tag(&tag, MEM_PTR_LAST_WRITE, MEM_VAL_DATA_START);
   write_int_tag(&tag, MEM_PTR_LAST_READ,  MEM_VAL_DATA_START);
 
@@ -380,14 +380,14 @@ void setup()
     pinMode(PIN_LED_R, OUTPUT);
     pinMode(PIN_LED_G, OUTPUT);
 
-    if(0){
-      setRgbLed(1, 0, 0); // start with LED off
-      delay(1000);
-      setRgbLed(0, 1, 0); // start with LED off
-      delay(1000);
-      setRgbLed(0, 0, 1); // start with LED off
-      delay(1000);
-      setRgbLed(0, 0, 0); // start with LED off
+    if(1){
+      setRgbLed(1, 0, 0); // red
+      delay(100);
+      setRgbLed(0, 1, 0); // green
+      delay(100);
+      setRgbLed(0, 0, 1); // blue
+      delay(100);
+      setRgbLed(0, 0, 0); // off
     }
 
     //power up the dcdc and the 3v3 regulator
@@ -398,11 +398,12 @@ void setup()
     delay(1000); //let the voltages stabilize
 
     // Scan I2C bus and print all detected devices
-    i2c_scan();
+    if(0){
+      i2c_scan();
+    }
 
     // Initialize ESP32 internal persistent storage (NVS)
     nvs_init();
-
 
       // Initialize the RV-3028 RTC and set/read its time
     setup_rtc();
@@ -416,11 +417,11 @@ void setup()
     }
 
 
-  setup_tag(&tag);
+    setup_tag(&tag);
     init_memspace(); //on a fresh device:
 
     // Enable OTA-over-NFC (ST25DV mailbox streaming)
-    nfc_ota_setup(&tag);
+    //nfc_ota_setup(&tag);
 
     setup_bmv080(); //do after tag since the memspace sets the duty cycle...
 
@@ -494,12 +495,14 @@ void loop()
 {
     // If an OTA transfer is in progress, dedicate the loop to it.
     // (Firmware update will reboot the ESP32 when complete.)
-    if (nfc_ota_poll()) {
-      delay(10);
-      return; //will rerun the loop:::
-    }
+    // if (nfc_ota_poll()) {
+    //   delay(10);
+    //   return; //will rerun the loop:::
+    // }
 
     //phone sets new timestamp on connect -> ...
+    dump_tag_words64(&tag, 0); //check last 64 words before timestamp
+    // Serial.println(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP));
     if(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
       //new timestamp set by the app, add this timestamp to the ringbuffer...
       Serial.println("NEW_TIMESTAMP");
