@@ -24,15 +24,18 @@ int64_t last_nvs_write_us = 0;
 
 Preferences prefs;
 static const char* NVS_NS = "senslog";
-static const uint32_t NVS_MAGIC = 0x501D0001u;
-static const uint16_t NVS_RING_SIZE = 256; // entries; each entry is one uint32_t packed value
+static const uint16_t NVS_MAGIC = 0x501D;
+static const uint16_t NVS_RING_SIZE = 256; // entries; each entry is two uint16_t packed value
 
 #define SAD 0
 #define HAPPY 1
 #define NEUTRAL 2
 
 //RTC
+
+#define valid_time_threshold (1767370414u) //1 jan 2026
 uint32_t unix_timestamp = 0;
+bool valid_rtc_time = false;
 RV3028C7 rtc;
 
 #include <time.h>
@@ -105,40 +108,101 @@ uint8_t measurement_mode      = 1;
 uint8_t user_name_length      = 0;
 uint8_t user_name[30];
 
+
 void nvs_init()
 {
-  if (!prefs.begin(NVS_NS, false)) {
+  if (!prefs.begin(NVS_NS, false))
+  {
     Serial.println("NVS begin failed");
     GLOBAL_ERROR = 1;
     return;
   }
 
-  uint32_t magic = prefs.getUInt("magic", 0);
-  if (magic != NVS_MAGIC) {
+  uint16_t magic = prefs.getUShort("magic", 0);
+  Serial.print("NVS magic: ");
+  Serial.println(magic, HEX);
+
+  // Migrate/initialize if needed.
+  if (magic != NVS_MAGIC)
+  {
+    Serial.println("NVS init/format");
     prefs.clear();
-    prefs.putUInt("magic", NVS_MAGIC);
+    prefs.putUShort("magic", NVS_MAGIC);
     prefs.putUShort("idx", 0);
     prefs.putUInt("last", 0);
+    prefs.putUInt("tlast", 0);
   }
+  else
+  {
+    Serial.println("NVS already initialized.");
+  }
+
+  magic = prefs.getUShort("magic", 0);
+  Serial.print("NVS magic (after): ");
+  Serial.println(magic, HEX);
 }
 
-void nvs_log_packed(uint32_t packedValue)
+// Returns true if the ring entry exists.
+bool nvs_read_entry(uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp)
 {
-  // Flash wear guard: write at most once per minute
-  int64_t now_us = esp_timer_get_time();
-  if (last_nvs_write_us != 0 && (now_us - last_nvs_write_us) < (60LL * 1000LL * 1000LL)) {
-    return;
-  }
+  if (sensorValue)
+    *sensorValue = 0;
+  if (unixTimestamp)
+    *unixTimestamp = 0;
+
+  char keyData[8];
+  char keyTs[8];
+  snprintf(keyData, sizeof(keyData), "d%03u", (unsigned)(index % NVS_RING_SIZE));
+  snprintf(keyTs, sizeof(keyTs), "t%03u", (unsigned)(index % NVS_RING_SIZE));
+
+  // If a key has never been written, Preferences will not have it.
+  if (!prefs.isKey(keyData))
+    return false;
+
+  if (sensorValue)
+    *sensorValue = prefs.getUInt(keyData, 0);
+  if (unixTimestamp && prefs.isKey(keyTs))
+    *unixTimestamp = prefs.getUInt(keyTs, 0);
+
+  return true;
+}
+
+void nvs_log_packed(uint32_t sensorValue, uint32_t unixTimestamp)
+{
+  // // Flash wear guard: write at most once per minute
+  // int64_t now_us = esp_timer_get_time();
+  // if (last_nvs_write_us != 0 && (now_us - last_nvs_write_us) < (60LL * 1000LL * 1000LL)) {
+  //   return;
+  // }
 
   uint16_t idx = prefs.getUShort("idx", 0);
-  char key[8];
-  snprintf(key, sizeof(key), "d%03u", (unsigned)(idx % NVS_RING_SIZE));
+  char keyData[8];
+  char keyTs[8];
+  char keyRTCvalid[8];
+  snprintf(keyData, sizeof(keyData), "d%03u", (unsigned)(idx % NVS_RING_SIZE));
+  snprintf(keyTs, sizeof(keyTs), "t%03u", (unsigned)(idx % NVS_RING_SIZE));
+  snprintf(keyRTCvalid, sizeof(keyRTCvalid), "v%03u", (unsigned)(idx % NVS_RING_SIZE));
 
-  prefs.putUInt(key, packedValue);
-  prefs.putUInt("last", packedValue);
+  Serial.print((keyData));
+  Serial.print(": ");
+  Serial.print(keyTs);
+
+  prefs.putUInt(keyData, sensorValue);
+  prefs.putUInt(keyTs, unixTimestamp);
+  prefs.putBool(keyRTCvalid, valid_rtc_time);
+  prefs.putUInt("last", sensorValue);
+  prefs.putUInt("tlast", unixTimestamp);
   prefs.putUShort("idx", (uint16_t)((idx + 1) % NVS_RING_SIZE));
 
-  last_nvs_write_us = now_us;
+  Serial.print("data logged: t = ");
+  Serial.print(unixTimestamp);
+  Serial.print(" value = ");
+  Serial.print(sensorValue);
+  Serial.print(" rtc_valid: ");
+  Serial.print(valid_rtc_time);
+  Serial.println();
+  
+
 }
 
 uint32_t abs_x(int value){
@@ -315,18 +379,38 @@ void setRgbLed(uint8_t r, uint8_t g, uint8_t b)
 
 // Initialize RV-3028 RTC, set it once to the compile time,
 // and store the current Unix time in the global unix_timestamp.
+
+void update_valid_rtc_time(){
+  if(rtc.getUnixTimestamp() < valid_time_threshold){ //less than sep 5, 2024
+    // RTC time is not set; set it to the compile time
+    Serial.println("RTC time not set.");
+    valid_rtc_time = false;
+    Serial.println(rtc.getUnixTimestamp());
+    Serial.println(rtc.getCurrentDateTime());
+  }
+  else{
+    valid_rtc_time = true;
+    Serial.print("RTC time valid: ");
+    Serial.println(rtc.getUnixTimestamp());
+    Serial.println(rtc.getCurrentDateTime());
+  }
+}
+
 void setup_rtc()
 {
   while (rtc.begin() == false) {
     Serial.println("Failed to detect RV-3028-C7!");
     delay(5000);
   }
+
+  update_valid_rtc_time();
 }
 
 
 void synch_rtc(uint32_t secondsSinceEpoch){
   rtc.setUnixTimestamp(secondsSinceEpoch, true); // true to also set the esp32 internal timekeeping registers
   rtc.synchronize();
+  update_valid_rtc_time();
 }
 
 
@@ -402,19 +486,14 @@ void setup()
       i2c_scan();
     }
 
+    delay(1000);
+
     // Initialize ESP32 internal persistent storage (NVS)
     nvs_init();
 
       // Initialize the RV-3028 RTC and set/read its time
     setup_rtc();
-    // synch_rtc(1762359245); // Set to a fixed time for testing: 2024-09-05 12:00:45 UTC
-
-    for(int i =0; i<5; i++){
-      delay(1000);
-      Serial.println(rtc.getCurrentDateTime());
-      Serial.print(F("Unix timestamp: "));
-      Serial.println(rtc.getUnixTimestamp());
-    }
+    synch_rtc(1767370633u); //set to compile time initially
 
 
     setup_tag(&tag);
@@ -501,7 +580,7 @@ void loop()
     // }
 
     //phone sets new timestamp on connect -> ...
-    dump_tag_words64(&tag, 0); //check last 64 words before timestamp
+    // dump_tag_words64(&tag, 0); //check last 64 words before timestamp
     // Serial.println(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP));
     if(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
       //new timestamp set by the app, add this timestamp to the ringbuffer...
@@ -513,11 +592,8 @@ void loop()
         // The LSB is used as a marker, so mask it off for the RTC.
         uint32_t epochSec = ((uint32_t)timestamp);
         synch_rtc(epochSec);
-        unix_timestamp = epochSec;
 
-        write_int_tag(&tag, current_data_add + 4, 0xC1EAC1EA);
-        write_int_tag(&tag, current_data_add, timestamp);
-        current_data_add=current_data_add + 4; //dont care about overflow, this is handled by the find_write_addr;
+
       }
       write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
     }
@@ -537,23 +613,14 @@ void loop()
             Serial.print("\tObstructed");
             pm25_int = 0x0fff;
         }
-        int64_t since_boot_us = esp_timer_get_time();
         //store this in the memory:
         current_data_add = find_write_addr(current_data_add);
-        uint16_t relative_timestamp = ((since_boot_us -last_sensor_readout_us)/1000/1000/60);
-        if(relative_timestamp < 1) relative_timestamp =1;
-        if(relative_timestamp == 4) relative_timestamp =5;
-        Serial.println("timestamp");
-        Serial.println(relative_timestamp);
-        //find location to write
-        write_int_tag(&tag, current_data_add + 4, 0xC1EAC1EA); //CLEAN means 
-        uint32_t packed = (uint32_t)(pm25_int << 1) + (uint32_t)(relative_timestamp << 16);
-        write_int_tag(&tag, current_data_add, packed); //lsb =1 means a timestamp value from nfc i.o. a sensor readout...
-        // Also store into ESP32 internal flash (NVS) for redundancy
-        nvs_log_packed(packed);
-        last_sensor_readout_us = since_boot_us;
-        current_data_add=current_data_add + 4; //dont care about overflow, this is handled by the find_write_addr;
+
+
+        uint32_t ts = rtc.getUnixTimestamp();
+        nvs_log_packed(pm25_int, ts);
     }
+
     Serial.print(".");
     delay(10000);
 }
