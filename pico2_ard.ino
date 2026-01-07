@@ -19,6 +19,8 @@
 
 #include <Preferences.h>
 
+#define SIM_BMV080 1
+
 int64_t last_sensor_readout_us =0;
 int64_t last_nvs_write_us = 0;
 
@@ -288,7 +290,7 @@ void init_memspace(){
 void setup_bmv080(){
   if (bmv080.begin(BMV080_ADDR, Wire) == false) {
       Serial.println("BMV080 not detected at default I2C address. Check your jumpers and the hookup guide. Freezing...");
-      while (1);
+      return;
   }
   Serial.println("BMV080 found!");
   /* Initialize the Sensor (read driver, open, reset, id etc.)*/
@@ -457,6 +459,7 @@ void setup()
 {
     Serial.begin(115200);
     Wire.begin();
+    // Wire.setClock(50000L);
     
     // Configure RGB LED pin (only blue is valid on this board)
     pinMode(PIN_CS_B, INPUT);  //unused but make sure it does not interfer with CS_A
@@ -598,9 +601,11 @@ void loop()
       write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
     }
 
-    if(bmv080.readSensor())
+    float pm25 = 0.0;
+    if(bmv080.readSensor()  || SIM_BMV080)
     {
-        float pm25 = bmv080.PM25();  //µg/m³ teka spec says ,max is 7mg/m3 so 7000
+        
+        pm25 = SIM_BMV080 ? (pm25 + 1) : bmv080.PM25();  //µg/m³ teka spec says ,max is 7mg/m3 so 7000
         Serial.println("FLOAT PM2.5: ");
         Serial.print(pm25);
         if(pm25 > 7000){
@@ -608,7 +613,7 @@ void loop()
         }
         uint16_t pm25_int = uint16_t (pm25);
         Serial.print(pm25_int);
-        if(bmv080.isObstructed() == true)
+        if(!SIM_BMV080 && bmv080.isObstructed() == true)
         {
             Serial.print("\tObstructed");
             pm25_int = 0x0fff;

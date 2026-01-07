@@ -86,6 +86,32 @@ void setup_tag(SFE_ST25DV64KC* tag){
   Serial.print(F("I2C session is "));
   Serial.println(tag->isI2CSessionOpen() ? "opened." : "closed.");
 
+  // Ensure the tag starts in non-mailbox mode.
+  // (OTA-over-NFC can still enable mailbox later when needed.)
+  {
+    bool ok = true;
+
+    // Disable mailbox enable (dynamic).
+    ok &= tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, REG_MB_CTRL_DYN, 0x00);
+
+    // Disable mailbox mode in FTM register (system).
+    uint8_t ftm = 0;
+    if (tag->st25_io.readSingleByte(SF_ST25DV64KC_ADDRESS::SYSTEM, REG_FTM, &ftm))
+    {
+      ftm = (uint8_t)(ftm & (uint8_t)~BIT_FTM_MB_MODE);
+      ok &= tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::SYSTEM, REG_FTM, ftm);
+    }
+    else
+    {
+      ok = false;
+    }
+
+    if (!ok)
+    {
+      Serial.println(F("Warning: failed to disable mailbox mode"));
+    }
+  }
+
 
 }
 
