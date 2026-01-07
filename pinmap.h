@@ -42,8 +42,8 @@
     #define MEM_VAL_WARNING             20    // MAX MIN(5000, MEM_VAL_LIMIT) 
     #define MEM_VAL_LIMIT               24    // MAX 7000
 
-    #define MEM_VAL_NEWTIMESTAMP        28    //set by app
     #define MEM_VAL_NEWSETTINGS         32    //set by app
+    #define MEM_VAL_NEWTIMESTAMP        36    //set by app
 
     #define MEM_VAL_USER_NAME_LENGTH    44
     #define MEM_VAL_USER_NAME           48
