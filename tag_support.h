@@ -11,9 +11,6 @@ void write_string_tag(SFE_ST25DV64KC* tag, int address, uint8_t * stringtowrite,
 void read_string_tag(SFE_ST25DV64KC* tag, int address, uint8_t * stringtoread, uint8_t string_len);
 void setup_tag(SFE_ST25DV64KC* tag);
 
-// Debug: compare library read vs raw I2C read to detect caching issues
-void debug_compare_reads(SFE_ST25DV64KC* tag, int address);
-
 // Debug helper: dump 64 32-bit words (256 bytes) starting at startAddress.
 // Each word is read using read_int_tag() so startAddress must be 4-byte aligned.
 void dump_tag_words64(SFE_ST25DV64KC* tag, int startAddress = 0);

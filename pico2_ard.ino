@@ -465,10 +465,6 @@ void setup()
         delay(500);
       }
 
-
-      // After NFC write, in your loop or test code:
-      Serial.println("Testing library vs raw read after NFC write:");
-      debug_compare_reads(&tag, 5);  // e.g., MEM_VAL_TIMESTAMP
       delay(10000);
     }
 
