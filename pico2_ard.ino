@@ -15,152 +15,14 @@
 
 #include "tag_support.h"
 
-// #include "nfc_ota.h"
+#include "senslog_fs.h"
 
-#include <FS.h>
-#include <LittleFS.h>
+// #include "nfc_ota.h"
 
 #define SIM_BMV080 1
 
 int64_t last_sensor_readout_us =0;
 int64_t last_nvs_write_us = 0;
-
-// Persist sensor logs + metadata in filesystem (LittleFS) instead of NVS.
-// This avoids exhausting the small NVS partition (NOT_ENOUGH_SPACE).
-static const uint16_t LOG_MAGIC = 0x501E; // bump to force re-init when format changes
-static const uint16_t NVS_RING_SIZE = 10*24*60; // entries; each entry is two uint16_t packed value
-                                      //10 daysm 1 minute logging
-                                      //this is (4 +4) *10 * 24 *60 = 115.2 kB
-
-static const char* LOG_META_PATH = "/senslog.meta";
-static const char* LOG_RING_PATH = "/senslog.bin";
-
-typedef struct __attribute__((packed))
-{
-  uint16_t magic;
-  uint16_t idx;
-  uint32_t last;
-  uint32_t tlast;
-} LogMeta;
-
-typedef struct __attribute__((packed))
-{
-  uint32_t sensorValue;
-  uint32_t unixTimestamp;
-  uint8_t rtcValid;
-  uint8_t _pad[3];
-} LogEntry;
-
-static LogMeta logMeta = {0};
-static bool logfs_ready = false;
-
-static bool logfs_write_meta(const LogMeta &m)
-{
-  File f = LittleFS.open(LOG_META_PATH, "w");
-  if (!f)
-    return false;
-  const size_t w = f.write((const uint8_t *)&m, sizeof(m));
-  f.close();
-  return w == sizeof(m);
-}
-
-static bool logfs_read_meta(LogMeta *out)
-{
-  if (!out)
-    return false;
-
-  File f = LittleFS.open(LOG_META_PATH, "r");
-  if (!f)
-    return false;
-  if ((size_t)f.size() != sizeof(LogMeta))
-  {
-    f.close();
-    return false;
-  }
-  const size_t n = f.read((uint8_t *)out, sizeof(LogMeta));
-  f.close();
-  return n == sizeof(LogMeta);
-}
-
-static bool logfs_ensure_ring_file()
-{
-  const size_t expectedSize = (size_t)NVS_RING_SIZE * sizeof(LogEntry);
-
-  if (LittleFS.exists(LOG_RING_PATH))
-  {
-    File f = LittleFS.open(LOG_RING_PATH, "r");
-    if (!f)
-      return false;
-    const size_t actualSize = (size_t)f.size();
-    f.close();
-    if (actualSize == expectedSize)
-      return true;
-
-    Serial.println("LittleFS ring size mismatch; recreating");
-    LittleFS.remove(LOG_RING_PATH);
-  }
-
-  File f = LittleFS.open(LOG_RING_PATH, "w");
-  if (!f)
-    return false;
-
-  static uint8_t zeros[256] = {0};
-  size_t remaining = expectedSize;
-  while (remaining > 0)
-  {
-    const size_t chunk = (remaining > sizeof(zeros)) ? sizeof(zeros) : remaining;
-    if (f.write(zeros, chunk) != chunk)
-    {
-      f.close();
-      return false;
-    }
-    remaining -= chunk;
-  }
-  f.close();
-  return true;
-}
-
-static bool logfs_init()
-{
-  if (logfs_ready)
-    return true;
-
-  if (!LittleFS.begin(false))
-  {
-    Serial.println("LittleFS mount failed; formatting...");
-    if (!LittleFS.begin(true))
-    {
-      Serial.println("LittleFS mount failed after format");
-      return false;
-    }
-  }
-
-  LogMeta m;
-  const bool haveMeta = logfs_read_meta(&m);
-
-  if (!haveMeta || m.magic != LOG_MAGIC)
-  {
-    Serial.println("LOG init/format");
-    m.magic = LOG_MAGIC;
-    m.idx = 0;
-    m.last = 0;
-    m.tlast = 0;
-    if (!logfs_write_meta(m))
-      return false;
-    // Start fresh ring file on format/migration.
-    LittleFS.remove(LOG_RING_PATH);
-  }
-
-  if (!logfs_ensure_ring_file())
-    return false;
-
-  // Load into RAM cache.
-  if (!logfs_read_meta(&logMeta))
-    return false;
-
-  logfs_ready = true;
-  return true;
-}
 
 #define SAD 0
 #define HAPPY 1
@@ -246,7 +108,7 @@ uint8_t user_name[30];
 
 void nvs_init()
 {
-  if (!logfs_init())
+  if (!senslog_init())
   {
     Serial.println("LOG init failed");
     GLOBAL_ERROR = 1;
@@ -254,98 +116,18 @@ void nvs_init()
   }
 
   Serial.print("LOG magic: ");
-  Serial.println(logMeta.magic, HEX);
+  Serial.println(senslog_get_magic(), HEX);
 }
 
 // Returns true if the ring entry exists.
 bool nvs_read_entry(uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp)
 {
-  if (sensorValue)
-    *sensorValue = 0;
-  if (unixTimestamp)
-    *unixTimestamp = 0;
-
-  if (!logfs_init())
-    return false;
-
-  const uint16_t slot = (uint16_t)(index % NVS_RING_SIZE);
-  const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
-
-  File f = LittleFS.open(LOG_RING_PATH, "r");
-  if (!f)
-    return false;
-  if (!f.seek(offsetBytes, SeekSet))
-  {
-    f.close();
-    return false;
-  }
-  LogEntry e;
-  const size_t n = f.read((uint8_t *)&e, sizeof(e));
-  f.close();
-  if (n != sizeof(e))
-    return false;
-
-  // Unwritten slots are all zeros.
-  if (e.unixTimestamp == 0 && e.sensorValue == 0)
-    return false;
-
-  if (sensorValue)
-    *sensorValue = e.sensorValue;
-  if (unixTimestamp)
-    *unixTimestamp = e.unixTimestamp;
-  return true;
+  return senslog_read_entry(index, sensorValue, unixTimestamp);
 }
 
 static void nvs_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new)
 {
-  // Fix all entries that were logged while RTC was invalid:
-  // rtc_fixed = rtc_new + (rtc_invalid - rtc_old)
-  // i.e. apply offset (rtc_new - rtc_old) to each invalid timestamp.
-  const int64_t offset = (int64_t)rtc_new - (int64_t)rtc_old;
-
-  uint16_t fixedCount = 0;
-
-  if (!logfs_init())
-    return;
-
-  File f = LittleFS.open(LOG_RING_PATH, "r+");
-  if (!f)
-    return;
-
-  for (uint16_t i = 0; i < NVS_RING_SIZE; i++)
-  {
-    const size_t offsetBytes = (size_t)i * sizeof(LogEntry);
-    if (!f.seek(offsetBytes, SeekSet))
-      continue;
-
-    LogEntry e;
-    const size_t n = f.read((uint8_t *)&e, sizeof(e));
-    if (n != sizeof(e))
-      continue;
-
-    if (e.unixTimestamp == 0 && e.sensorValue == 0)
-      continue;
-
-    if (e.rtcValid)
-      continue;
-
-    const uint32_t rtc_invalid = e.unixTimestamp;
-    const int64_t fixed64 = (int64_t)rtc_invalid + offset;
-    if (fixed64 < 0 || fixed64 > 0xFFFFFFFFLL)
-      continue;
-
-    e.unixTimestamp = (uint32_t)fixed64;
-    e.rtcValid = 1;
-
-    if (!f.seek(offsetBytes, SeekSet))
-      continue;
-    const size_t w = f.write((const uint8_t *)&e, sizeof(e));
-    if (w != sizeof(e))
-      continue;
-
-    fixedCount++;
-  }
-  f.close();
+  const uint16_t fixedCount = senslog_fix_invalid_timestamps(rtc_old, rtc_new);
 
   Serial.print("NVS timestamp fix: rtc_old=");
   Serial.print(rtc_old);
@@ -362,39 +144,8 @@ void nvs_log_packed(uint32_t sensorValue, uint32_t unixTimestamp)
   // if (last_nvs_write_us != 0 && (now_us - last_nvs_write_us) < (60LL * 1000LL * 1000LL)) {
   //   return;
   // }
-  if (!logfs_init())
+  if (!senslog_log_packed(sensorValue, unixTimestamp, valid_rtc_time))
     return;
-
-  const uint16_t idx = logMeta.idx;
-  const uint16_t slot = (uint16_t)(idx % NVS_RING_SIZE);
-  const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
-
-  File f = LittleFS.open(LOG_RING_PATH, "r+");
-  if (!f)
-    return;
-  if (!f.seek(offsetBytes, SeekSet))
-  {
-    f.close();
-    return;
-  }
-
-  LogEntry e;
-  e.sensorValue = sensorValue;
-  e.unixTimestamp = unixTimestamp;
-  e.rtcValid = valid_rtc_time ? 1 : 0;
-  e._pad[0] = 0;
-  e._pad[1] = 0;
-  e._pad[2] = 0;
-
-  const size_t w = f.write((const uint8_t *)&e, sizeof(e));
-  f.close();
-  if (w != sizeof(e))
-    return;
-
-  logMeta.last = sensorValue;
-  logMeta.tlast = unixTimestamp;
-  logMeta.idx = (uint16_t)((idx + 1) % NVS_RING_SIZE);
-  (void)logfs_write_meta(logMeta);
 
   Serial.print("data logged: t = ");
   Serial.print(unixTimestamp);
