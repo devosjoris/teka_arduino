@@ -452,23 +452,21 @@ void setup()
 
     setup_tag(&tag);
 
-    for(int i =0; i<10; i++){
-      write_int_tag(&tag, 4*i, 0xFF000000 + i);
-      delay(500);
-    }
+    // for(int i =0; i<10; i++){
+    //   write_int_tag(&tag, 4*i, 0xFF000000 + i);
+    //   delay(500);
+    // }
 
-    while(1){
-      for(int i =0; i<10; i++){
-        Serial.print("READ TAG ADDR: ");
-        Serial.print(4*i);
-        Serial.println(read_int_tag(&tag, 4*i), HEX);
-        delay(500);
-      }
+    // while(1){
+    //   for(int i =0; i<10; i++){
+    //     Serial.print("READ TAG ADDR: ");
+    //     Serial.print(4*i);
+    //     Serial.println(read_int_tag(&tag, 4*i), HEX);
+    //     delay(500);
+    //   }
 
-      delay(10000);
-    }
-
-
+    //   delay(10000);
+    // }
 
     init_memspace(); //on a fresh device:
 
