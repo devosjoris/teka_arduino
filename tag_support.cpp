@@ -7,11 +7,80 @@
 
 extern int GLOBAL_ERROR;
 
+#define ST25DV_I2C_ADDR_DATA  0x53  // ST25DV user memory I2C address
+
+// RAW I2C read - bypasses SparkFun library completely
+// Use this to test if the issue is library caching vs chip behavior
+static bool raw_i2c_read(uint16_t address, uint8_t* data, uint8_t len)
+{
+  Wire.beginTransmission(ST25DV_I2C_ADDR_DATA);
+  Wire.write((address >> 8) & 0xFF);  // MSB
+  Wire.write(address & 0xFF);         // LSB
+  if (Wire.endTransmission(false) != 0) {  // Repeated start
+    return false;
+  }
+  
+  uint8_t received = Wire.requestFrom(ST25DV_I2C_ADDR_DATA, len);
+  if (received != len) {
+    return false;
+  }
+  
+  for (uint8_t i = 0; i < len; i++) {
+    data[i] = Wire.read();
+  }
+  return true;
+}
+
+// Debug function: compare library read vs raw I2C read
+void debug_compare_reads(SFE_ST25DV64KC* tag, int address)
+{
+  uint8_t lib_data[4], raw_data[4];
+  
+  // Library read
+  tag->readEEPROM(address, lib_data, 4);
+  
+  // Raw I2C read
+  raw_i2c_read(address, raw_data, 4);
+  
+  Serial.print(F("Address 0x"));
+  Serial.print(address, HEX);
+  Serial.print(F(" - Library: "));
+  for (int i = 0; i < 4; i++) {
+    Serial.print(lib_data[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.print(F(" | Raw I2C: "));
+  for (int i = 0; i < 4; i++) {
+    Serial.print(raw_data[i], HEX);
+    Serial.print(" ");
+  }
+  
+  if (memcmp(lib_data, raw_data, 4) != 0) {
+    Serial.println(F(" *** MISMATCH! ***"));
+  } else {
+    Serial.println(F(" (match)"));
+  }
+}
+
+// Force I2C cache invalidation on every read
+// The RF_WRITE flag doesn't reliably toggle, so we always refresh
+static void force_i2c_cache_refresh(SFE_ST25DV64KC* tag)
+{
+  // Temporarily disable RF to force internal sync
+  tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, 0x2003, 0x02); // RF_DIS=1
+  delayMicroseconds(500);
+  tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, 0x2003, 0x00); // RF_DIS=0
+  delayMicroseconds(500);
+}
+
 uint32_t read_int_tag(SFE_ST25DV64KC* tag, int address)
 {
   uint32_t result = 0;
   uint8_t tagRead[4];
   if((address % 4) == 0){
+    // Force cache refresh before every read
+    force_i2c_cache_refresh(tag);
+    
     tag->readEEPROM(address, tagRead, 4);
     Serial.print(tagRead[0], HEX);
     Serial.print(" ");
@@ -61,6 +130,9 @@ void read_string_tag(SFE_ST25DV64KC* tag, int address, uint8_t * stringtoread, u
 {
   //unprotect?
   if((address % 4) == 0){
+    // Force cache refresh before every read
+    force_i2c_cache_refresh(tag);
+    
     tag->readEEPROM(address, stringtoread, string_len);
     return;
   }
