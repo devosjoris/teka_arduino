@@ -9,13 +9,16 @@ extern int GLOBAL_ERROR;
 
 // Force I2C cache invalidation on every read
 // The RF_WRITE flag doesn't reliably toggle, so we always refresh
-static void force_i2c_cache_refresh(SFE_ST25DV64KC* tag)
+//hard required !!!!
+static void disable_rf(SFE_ST25DV64KC* tag)
 {
-  // Temporarily disable RF to force internal sync
   tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, 0x2003, 0x02); // RF_DIS=1
   delayMicroseconds(500);
+}
+
+static void enable_rf(SFE_ST25DV64KC* tag)
+{
   tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, 0x2003, 0x00); // RF_DIS=0
-  delayMicroseconds(500);
 }
 
 uint32_t read_int_tag(SFE_ST25DV64KC* tag, int address)
@@ -23,10 +26,14 @@ uint32_t read_int_tag(SFE_ST25DV64KC* tag, int address)
   uint32_t result = 0;
   uint8_t tagRead[4];
   if((address % 4) == 0){
-    // Force cache refresh before every read
-    force_i2c_cache_refresh(tag);
+    // Disable RF before read to force cache sync
+    disable_rf(tag);
     
     tag->readEEPROM(address, tagRead, 4);
+    
+    // Re-enable RF after read
+    enable_rf(tag);
+    
     Serial.print(tagRead[0], HEX);
     Serial.print(" ");
     Serial.print(tagRead[1], HEX);  
@@ -75,10 +82,13 @@ void read_string_tag(SFE_ST25DV64KC* tag, int address, uint8_t * stringtoread, u
 {
   //unprotect?
   if((address % 4) == 0){
-    // Force cache refresh before every read
-    force_i2c_cache_refresh(tag);
+    // Disable RF before read to force cache sync
+    disable_rf(tag);
     
     tag->readEEPROM(address, stringtoread, string_len);
+    
+    // Re-enable RF after read
+    enable_rf(tag);
     return;
   }
   GLOBAL_ERROR = 1;
