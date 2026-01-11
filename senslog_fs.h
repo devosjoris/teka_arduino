@@ -31,6 +31,10 @@ bool senslog_read_entry(uint16_t index, uint32_t *sensorValue, uint32_t *unixTim
 // Returns true if the write succeeded.
 bool senslog_log_packed(uint32_t sensorValue, uint32_t unixTimestamp, bool rtcValid);
 
+// Updates an existing entry at a specific index (does not advance ring index).
+// Returns true if the write succeeded.
+bool senslog_update_entry(uint16_t index, uint32_t sensorValue, uint32_t unixTimestamp, bool rtcValid);
+
 // Applies RTC offset fix to entries that were logged while rtcValid==false.
 // Returns the number of entries fixed.
 uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new);

@@ -252,7 +252,23 @@ bool senslog_log_packed(uint32_t sensorValue, uint32_t unixTimestamp, bool rtcVa
     return false;
 
   const uint16_t idx = g_meta.idx;
-  const uint16_t slot = (uint16_t)(idx % kRingSize);
+
+  if (!senslog_update_entry(idx, sensorValue, unixTimestamp, rtcValid))
+    return false;
+
+  g_meta.last = sensorValue;
+  g_meta.tlast = unixTimestamp;
+  g_meta.idx = (uint16_t)((idx + 1) % kRingSize);
+  (void)write_meta(g_meta);
+
+  return true;
+}
+
+bool senslog_update_entry(uint16_t index, uint32_t sensorValue, uint32_t unixTimestamp, bool rtcValid) {
+  if (!senslog_init())
+    return false;
+
+  const uint16_t slot = (uint16_t)(index % kRingSize);
   const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
 
   File f = LittleFS.open(kRingPath, "r+");
@@ -273,15 +289,7 @@ bool senslog_log_packed(uint32_t sensorValue, uint32_t unixTimestamp, bool rtcVa
 
   const size_t w = f.write((const uint8_t *)&e, sizeof(e));
   f.close();
-  if (w != sizeof(e))
-    return false;
-
-  g_meta.last = sensorValue;
-  g_meta.tlast = unixTimestamp;
-  g_meta.idx = (uint16_t)((idx + 1) % kRingSize);
-  (void)write_meta(g_meta);
-
-  return true;
+  return w == sizeof(e);
 }
 
 // Formats: "YYYY-MM-DD HH:MM:SS"
@@ -308,7 +316,7 @@ void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLo
 uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
   Serial.println("=== NVS TS FIXING ===");
   Serial.println("Index\tTimestamp\tValue\tDate");
-
+  uint32_t rtc_diff = rtc_new - rtc_old;
   uint16_t count = 0;
   const uint16_t maxEntries = 10 * 24 * 60; // kRingSize from senslog_fs.cpp
 
@@ -319,7 +327,10 @@ uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
 
     if (nvs_read_entry(i, &sensorValue, &unixTimestamp, &rtcValid)) {
       if(rtcValid == false) {
-         ;agj;ad;das  TODO FIX THIS
+        //update timestamp
+        unixTimestamp += rtc_diff;
+        //write back the new timestamp with rtcValid = true
+        senslog_update_entry(i, sensorValue, unixTimestamp, true);
       }
 
       count++;
