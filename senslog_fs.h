@@ -36,6 +36,7 @@ bool senslog_log_packed(uint32_t sensorValue, uint32_t unixTimestamp, bool rtcVa
 uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new);
 
 uint16_t senslog_get_magic(void);
+uint16_t senslog_get_index(void);
 
 void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLocal = false);
 

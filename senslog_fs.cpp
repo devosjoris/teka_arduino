@@ -35,6 +35,9 @@ void nvs_log_packed(uint32_t sensorValue, uint32_t unixTimestamp)
     return;
 
   //read back the value to make sure it is ok:
+  Serial.print("NVS log index: ");
+  Serial.print((senslog_get_index()));
+
   Serial.print(" t = ");
   Serial.print(unixTimestamp);
   Serial.print(" value = ");
@@ -315,16 +318,9 @@ uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
     bool rtcValid = false;
 
     if (nvs_read_entry(i, &sensorValue, &unixTimestamp, &rtcValid)) {
-      char dateStr[20];
-      formatEpochSeconds(unixTimestamp, dateStr, sizeof(dateStr), false);
-
-      Serial.print(i);
-      Serial.print("\t");
-      Serial.print(unixTimestamp);
-      Serial.print("\t");
-      Serial.print(sensorValue);
-      Serial.print("\t");
-      Serial.println(dateStr);
+      if(rtcValid == false) {
+         ;agj;ad;das  TODO FIX THIS
+      }
 
       count++;
     }
@@ -339,4 +335,10 @@ uint16_t senslog_get_magic(void) {
   if (!senslog_init())
     return 0;
   return g_meta.magic;
+}
+
+uint16_t senslog_get_index(void) {
+  if (!senslog_init())
+    return 0;
+  return g_meta.idx;
 }
