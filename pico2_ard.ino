@@ -30,33 +30,13 @@ int64_t last_nvs_write_us = 0;
 
 //RTC
 
-#define valid_time_threshold (1767370414u) //1 jan 2026
 uint32_t unix_timestamp = 0;
 bool valid_rtc_time = false;
 RV3028C7 rtc;
 
 #include <time.h>
 
-// Formats: "YYYY-MM-DD HH:MM:SS"
-void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLocal = false) {
-  time_t t = (time_t)epochSec;
-  struct tm tmval;
-#if defined(ESP32) || defined(ESP8266)
-  // ESP platforms have localtime_r/gmtime_r
-  if (useLocal) localtime_r(&t, &tmval);
-  else gmtime_r(&t, &tmval);
-#else
-  // Fallback: non-thread-safe, but fine on Arduino
-  struct tm* p = useLocal ? localtime(&t) : gmtime(&t);
-  tmval = *p;
-#endif
-  // snprintf(out, outSize, "%04d-%02d-%02d %02d:%02d:%02d",
-  //          tmval.tm_year + 1900, tmval.tm_mon + 1, tmval.tm_mday,
-  //          tmval.tm_hour, tmval.tm_min, tmval.tm_sec);
 
-  snprintf(out, outSize, "%02d-%02d-%04d",
-           tmval.tm_mday, tmval.tm_mon + 1, tmval.tm_year + 1900);
-}
 
 #define COLORED     0
 #define UNCOLORED   1
@@ -119,44 +99,12 @@ void nvs_init()
   Serial.println(senslog_get_magic(), HEX);
 }
 
-// Returns true if the ring entry exists.
-bool nvs_read_entry(uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp)
-{
-  return senslog_read_entry(index, sensorValue, unixTimestamp);
-}
 
-static void nvs_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new)
-{
-  const uint16_t fixedCount = senslog_fix_invalid_timestamps(rtc_old, rtc_new);
-
-  Serial.print("NVS timestamp fix: rtc_old=");
-  Serial.print(rtc_old);
-  Serial.print(" rtc_new=");
-  Serial.print(rtc_new);
-  Serial.print(" fixed=");
-  Serial.println(fixedCount);
-}
-
-void nvs_log_packed(uint32_t sensorValue, uint32_t unixTimestamp)
-{
-  // // Flash wear guard: write at most once per minute
-  // int64_t now_us = esp_timer_get_time();
-  // if (last_nvs_write_us != 0 && (now_us - last_nvs_write_us) < (60LL * 1000LL * 1000LL)) {
-  //   return;
-  // }
-  if (!senslog_log_packed(sensorValue, unixTimestamp, valid_rtc_time))
-    return;
-
-  Serial.print("data logged: t = ");
-  Serial.print(unixTimestamp);
-  Serial.print(" value = ");
-  Serial.print(sensorValue);
-  Serial.print(" rtc_valid: ");
-  Serial.print(valid_rtc_time);
-  Serial.println();
-  
-
-}
+// // Declarations moved to senslog_fs.h/cpp
+// extern bool nvs_read_entry(uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp, bool *rtcValid);
+// extern void nvs_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new);
+// extern void nvs_log_packed(uint32_t sensorValue, uint32_t unixTimestamp);
+// extern void nvs_print_all_entries();
 
 uint32_t abs_x(int value){
   return (value < 0) ? -value : value;
@@ -567,7 +515,10 @@ void loop()
 
         // 3) fix all entries where rtc_valid == false:
         // rtc_fixed = rtc_new + (rtc_invalid - rtc_old)
+        nvs_print_all_entries(); //debug
         nvs_fix_invalid_timestamps(rtc_old, rtc_new);
+        Serial.println("AFTER TS FIX:");
+        nvs_print_all_entries(); //debug
         // Finally, set the RTC itself.
         synch_rtc(rtc_new);
       }
