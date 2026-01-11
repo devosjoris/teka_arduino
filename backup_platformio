@@ -16,9 +16,16 @@ board = esp32-s3-devkitc-1
 framework = arduino
 lib_extra_dirs = ~/Documents/Arduino/libraries
 
+; Store logs in LittleFS (not NVS/Preferences)
+board_build.filesystem = littlefs
+
 upload_port = COM4
 upload_speed = 115200
 monitor_speed = 115200
+monitor_filters = log2file
+
+; Full flash erase before every upload (wipes NVS, LittleFS, etc.)
+board_upload.erase_flash = true
 
 ; Keep in sync with your module wiring. Keeping DIO is fine/stable.
 board_build.flash_mode = dio

@@ -53,31 +53,53 @@ void nvs_print_all_entries()
   Serial.println("=== NVS Log Dump ===");
   Serial.println("Index\tTimestamp\tValue\tRTC Valid\tDate");
 
+  if (!senslog_init())
+    return;
+
+  File f = LittleFS.open("/senslog.bin", "r");
+  if (!f) {
+    Serial.println("Failed to open ring file");
+    return;
+  }
+
   uint16_t count = 0;
-  const uint16_t maxEntries = 10 * 24 * 60; // kRingSize from senslog_fs.cpp
+  const uint16_t maxEntries = 10 * 24 * 60; // kRingSize
 
   for (uint16_t i = 0; i < maxEntries; i++) {
     uint32_t sensorValue = 0;
     uint32_t unixTimestamp = 0;
-    bool rtcValid = false;
+    uint8_t rtcValidByte = 0;
+    uint8_t pad[3];
 
-    if (nvs_read_entry(i, &sensorValue, &unixTimestamp, &rtcValid)) {
-      char dateStr[20];
-      // You may need to move formatEpochSeconds to a shared location if not available here
-      formatEpochSeconds(unixTimestamp, dateStr, sizeof(dateStr), false);
+    // Read entry directly (12 bytes: 4 + 4 + 1 + 3)
+    if (f.read((uint8_t*)&sensorValue, 4) != 4) break;
+    if (f.read((uint8_t*)&unixTimestamp, 4) != 4) break;
+    if (f.read(&rtcValidByte, 1) != 1) break;
+    if (f.read(pad, 3) != 3) break;
 
-      Serial.print(i);
-      Serial.print("\t");
-      Serial.print(unixTimestamp);
-      Serial.print("\t");
-      Serial.print(sensorValue);
-      Serial.print("\t");
-      Serial.print(rtcValid? "valid":"invalid");
-      Serial.print("\t");
-      Serial.println(dateStr);
-      count++;
+    // Skip empty slots
+    if (unixTimestamp == 0 && sensorValue == 0) {
+      // Serial.print(i);
+      // Serial.println("\t<empty>");
+      continue;
     }
+
+    char dateStr[20];
+    formatEpochSeconds(unixTimestamp, dateStr, sizeof(dateStr), false);
+
+    Serial.print(i);
+    Serial.print("\t");
+    Serial.print(unixTimestamp);
+    Serial.print("\t");
+    Serial.print(sensorValue);
+    Serial.print("\t");
+    Serial.print(rtcValidByte ? "valid" : "invalid");
+    Serial.print("\t");
+    Serial.println(dateStr);
+    count++;
   }
+
+  f.close();
 
   Serial.print("=== Total entries: ");
   Serial.print(count);
@@ -317,29 +339,65 @@ uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
   Serial.println("=== NVS TS FIXING ===");
   Serial.println("Index\tTimestamp\tValue\tDate");
   uint32_t rtc_diff = rtc_new - rtc_old;
-  uint16_t count = 0;
-  const uint16_t maxEntries = 10 * 24 * 60; // kRingSize from senslog_fs.cpp
+  uint16_t fixedCount = 0;
+  uint16_t totalCount = 0;
+  const uint16_t maxEntries = 10 * 24 * 60; // kRingSize
+  const size_t entrySize = 12; // sizeof(LogEntry)
+
+  if (!senslog_init())
+    return 0;
+
+  File f = LittleFS.open("/senslog.bin", "r+");
+  if (!f) {
+    Serial.println("Failed to open ring file");
+    return 0;
+  }
 
   for (uint16_t i = 0; i < maxEntries; i++) {
     uint32_t sensorValue = 0;
     uint32_t unixTimestamp = 0;
-    bool rtcValid = false;
+    uint8_t rtcValidByte = 0;
+    uint8_t pad[3];
 
-    if (nvs_read_entry(i, &sensorValue, &unixTimestamp, &rtcValid)) {
-      if(rtcValid == false) {
-        //update timestamp
-        unixTimestamp += rtc_diff;
-        //write back the new timestamp with rtcValid = true
-        senslog_update_entry(i, sensorValue, unixTimestamp, true);
-      }
+    // Read entry directly (12 bytes: 4 + 4 + 1 + 3)
+    if (f.read((uint8_t*)&sensorValue, 4) != 4) break;
+    if (f.read((uint8_t*)&unixTimestamp, 4) != 4) break;
+    if (f.read(&rtcValidByte, 1) != 1) break;
+    if (f.read(pad, 3) != 3) break;
 
-      count++;
-    }
+    // Skip empty slots
+    if (unixTimestamp == 0 && sensorValue == 0)
+      continue;
+
+    // Skip already valid entries
+    if (rtcValidByte != 0)
+      continue;
+
+    totalCount++;
+
+    // Update timestamp
+    unixTimestamp += rtc_diff;
+    rtcValidByte = 1;
+
+    // Seek back 12 bytes (entry size) from current position to overwrite
+    if (!f.seek(-(int32_t)entrySize, SeekCur)) break;
+    f.write((const uint8_t*)&sensorValue, 4);
+    f.write((const uint8_t*)&unixTimestamp, 4);
+    f.write(&rtcValidByte, 1);
+    f.write(pad, 3);
+
+    fixedCount++;
   }
 
+  f.close();
+
   Serial.print("=== Total entries: ");
-  Serial.print(count);
+  Serial.print(totalCount);
+  Serial.print(", fixed: ");
+  Serial.print(fixedCount);
   Serial.println(" ===");
+
+  return fixedCount;
 }
 
 uint16_t senslog_get_magic(void) {
