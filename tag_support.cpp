@@ -33,15 +33,6 @@ uint32_t read_int_tag(SFE_ST25DV64KC* tag, int address)
     
     // Re-enable RF after read
     enable_rf(tag);
-    
-    Serial.print(tagRead[0], HEX);
-    Serial.print(" ");
-    Serial.print(tagRead[1], HEX);  
-    Serial.print(" ");
-    Serial.print(tagRead[2], HEX);
-    Serial.print(" ");
-    Serial.print(tagRead[3], HEX);
-    Serial.print("--> ");
 
     for(uint8_t i =0; i<4; i++){
       result += ((tagRead[i]) << (8 * i));

@@ -19,7 +19,7 @@
 
 // #include "nfc_ota.h"
 
-#define SIM_BMV080 1
+#define SIM_BMV080 0
 
 int64_t last_sensor_readout_us =0;
 int64_t last_nvs_write_us = 0;
@@ -165,10 +165,13 @@ void reset_memspace(){
 }
 
 void init_memspace(){
+  Serial.println("CHECK TAG MEMSPACE");
   if(read_int_tag(&tag, MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
+    Serial.println("TAG MEMSPACE INVALID -> RESET");
     reset_memspace();
   }
-  Serial.print("RESTORE");
+  Serial.print("READ/RESTORE values from TAG MEMSPACE to global vars");
+
   current_data_add = read_int_tag(&tag, MEM_PTR_LAST_WRITE);
   current_data_add = find_write_addr(current_data_add);
   measurement_mode = read_int_tag(&tag, MEM_VAL_MEASURE_MODE);
@@ -179,9 +182,13 @@ void init_memspace(){
   user_name_length = read_int_tag(&tag, MEM_VAL_USER_NAME_LENGTH);
   if(user_name_length > 40) GLOBAL_ERROR = 1; //invalid value 
   else                      read_string_tag(&tag, MEM_VAL_USER_NAME, user_name, user_name_length);
-  Serial.print("INIT/RESTORE DONE");
+  
   if(GLOBAL_ERROR){
     reset_memspace();
+    Serial.println("TAG MEMSPACE RESET DUE TO GLOBAL ERROR");
+  }
+  else{
+    Serial.println("TAG MEMSPACE RESTORED");
   }
 }
 
@@ -195,13 +202,33 @@ void setup_bmv080(){
   /* Initialize the Sensor (read driver, open, reset, id etc.)*/
   bmv080.init();
 
+  // Sanity check: read sensor ID and driver version
+  char sensorId[13];
+  if (bmv080.ID(sensorId)) {
+      Serial.print("BMV080 Sensor ID: ");
+      Serial.println(sensorId);
+  } else {
+      Serial.println("Error reading BMV080 Sensor ID");
+      GLOBAL_ERROR = 1;
+  }
+
+  uint16_t major, minor, patch;
+  if (bmv080.driverVersion(major, minor, patch)) {
+      Serial.print("BMV080 Driver Version: ");
+      Serial.print(major);
+      Serial.print(".");
+      Serial.print(minor);
+      Serial.print(".");
+      Serial.println(patch);
+  }
+
   /* Set the sensor Duty Cycling Period (seconds)*/
   uint16_t duty_cycling_period = 60;
-  if(measurement_mode == 0){
-    duty_cycling_period = 60;
+  if(measurement_mode == 1){
+    duty_cycling_period = 300;
   }
   else{
-    duty_cycling_period = 300;
+    duty_cycling_period = 60;
   }
 
   if(1){
