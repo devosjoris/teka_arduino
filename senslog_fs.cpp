@@ -411,3 +411,118 @@ uint16_t senslog_get_index(void) {
     return 0;
   return g_meta.idx;
 }
+
+uint16_t senslog_get_ring_size(void) {
+  return kRingSize;
+}
+
+bool senslog_read_entry_raw(uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp, uint8_t *flags) {
+  if (sensorValue)
+    *sensorValue = 0;
+  if (unixTimestamp)
+    *unixTimestamp = 0;
+  if (flags)
+    *flags = 0;
+  if (!senslog_init())
+    return false;
+
+  const uint16_t slot = (uint16_t)(index % kRingSize);
+  const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
+
+  File f = LittleFS.open(kRingPath, "r");
+  if (!f)
+    return false;
+  if (!f.seek(offsetBytes, SeekSet)) {
+    f.close();
+    return false;
+  }
+
+  LogEntry e;
+  const size_t n = f.read((uint8_t *)&e, sizeof(e));
+  f.close();
+  if (n != sizeof(e))
+    return false;
+
+  // Unwritten slots are all zeros.
+  if (e.unixTimestamp == 0 && e.sensorValue == 0)
+    return false;
+
+  if (sensorValue)
+    *sensorValue = e.sensorValue;
+  if (unixTimestamp)
+    *unixTimestamp = e.unixTimestamp;
+  if (flags)
+    *flags = e.rtcValid;  // The full flags byte
+
+  return true;
+}
+
+bool senslog_set_flags(uint16_t index, uint8_t flagsToSet) {
+  if (!senslog_init())
+    return false;
+
+  const uint16_t slot = (uint16_t)(index % kRingSize);
+  const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
+
+  File f = LittleFS.open(kRingPath, "r+");
+  if (!f)
+    return false;
+  if (!f.seek(offsetBytes, SeekSet)) {
+    f.close();
+    return false;
+  }
+
+  LogEntry e;
+  if (f.read((uint8_t *)&e, sizeof(e)) != sizeof(e)) {
+    f.close();
+    return false;
+  }
+
+  // Set the specified flags
+  e.rtcValid |= flagsToSet;
+
+  // Seek back and write
+  if (!f.seek(offsetBytes, SeekSet)) {
+    f.close();
+    return false;
+  }
+
+  const size_t w = f.write((const uint8_t *)&e, sizeof(e));
+  f.close();
+  return w == sizeof(e);
+}
+
+bool senslog_clear_flags(uint16_t index, uint8_t flagsToClear) {
+  if (!senslog_init())
+    return false;
+
+  const uint16_t slot = (uint16_t)(index % kRingSize);
+  const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
+
+  File f = LittleFS.open(kRingPath, "r+");
+  if (!f)
+    return false;
+  if (!f.seek(offsetBytes, SeekSet)) {
+    f.close();
+    return false;
+  }
+
+  LogEntry e;
+  if (f.read((uint8_t *)&e, sizeof(e)) != sizeof(e)) {
+    f.close();
+    return false;
+  }
+
+  // Clear the specified flags
+  e.rtcValid &= ~flagsToClear;
+
+  // Seek back and write
+  if (!f.seek(offsetBytes, SeekSet)) {
+    f.close();
+    return false;
+  }
+
+  const size_t w = f.write((const uint8_t *)&e, sizeof(e));
+  f.close();
+  return w == sizeof(e);
+}

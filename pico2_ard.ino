@@ -17,6 +17,8 @@
 
 #include "senslog_fs.h"
 
+#include "nfc_data_transfer.h"
+
 // #include "nfc_ota.h"
 
 #define SIM_BMV080 0
@@ -426,6 +428,7 @@ void setup()
 
 
     setup_tag(&tag);
+    nfc_dt_init(&tag);
 
     // for(int i =0; i<10; i++){
     //   write_int_tag(&tag, 4*i, 0xFF000000 + i);
@@ -576,6 +579,9 @@ void loop()
         uint32_t ts = rtc.getUnixTimestamp();
         nvs_log_packed(pm25_int, ts);
     }
+
+    //check if we received a command over nfc
+    nfc_dt_poll();
 
     Serial.print(".");
     delay(10000);
