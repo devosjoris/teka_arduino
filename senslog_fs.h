@@ -50,6 +50,14 @@ uint16_t senslog_get_ring_size(void);
 // Read entry with raw flags byte (for NFC transfer)
 bool senslog_read_entry_raw(uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp, uint8_t *flags);
 
+// Efficient batch reading: open file once, read multiple entries, then close
+// Returns opaque file handle (cast from File*), or nullptr on failure
+void* senslog_open_ring_read(void);
+// Read entry from pre-opened file handle (faster for batch reads)
+bool senslog_read_entry_raw_from_file(void* fileHandle, uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp, uint8_t *flags);
+// Close the ring file handle
+void senslog_close_ring_file(void* fileHandle);
+
 // Set or clear specific flag bits on an entry
 bool senslog_set_flags(uint16_t index, uint8_t flagsToSet);
 bool senslog_clear_flags(uint16_t index, uint8_t flagsToClear);

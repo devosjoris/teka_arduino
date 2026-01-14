@@ -51,13 +51,17 @@ static uint16_t count_pending_entries(void)
     const uint16_t ringSize = senslog_get_ring_size();
     uint16_t count = 0;
     
+    void* fh = senslog_open_ring_read();
+    if (!fh)
+        return 0;
+    
     for (uint16_t i = 0; i < ringSize; i++)
     {
         uint32_t sensorValue = 0;
         uint32_t timestamp = 0;
         uint8_t flags = 0;
         
-        if (senslog_read_entry_raw(i, &sensorValue, &timestamp, &flags))
+        if (senslog_read_entry_raw_from_file(fh, i, &sensorValue, &timestamp, &flags))
         {
             // Entry exists (non-zero) and not yet read out
             if ((flags & SENSLOG_FLAG_READOUT_DONE) == 0)
@@ -66,6 +70,8 @@ static uint16_t count_pending_entries(void)
             }
         }
     }
+    
+    senslog_close_ring_file(fh);
     
     return count;
 }
@@ -85,14 +91,25 @@ static void handle_request_data(void)
     uint16_t addr = NFC_DT_DATA_START_ADDR;
     uint16_t totalPending = 0;
     
+    void* fh = senslog_open_ring_read();
+    if (!fh)
+    {
+        Serial.println(F("NFC_DT: Failed to open ring file"));
+        write_status(NFC_DT_STATUS_ERROR);
+        clear_command();
+        return;
+    }
+    
+    Serial.println(F("NFC_DT: write to eeprom:"));
     for (uint16_t i = 0; i < ringSize && s_lastBatchCount < NFC_DT_MAX_ENTRIES; i++)
     {
         uint32_t sensorValue = 0;
         uint32_t timestamp = 0;
         uint8_t flags = 0;
         
-        if (senslog_read_entry_raw(i, &sensorValue, &timestamp, &flags))
+        if (senslog_read_entry_raw_from_file(fh, i, &sensorValue, &timestamp, &flags))
         {
+            Serial.println(i);
             // Entry exists - check if already read out
             if ((flags & SENSLOG_FLAG_READOUT_DONE) == 0)
             {
@@ -123,6 +140,8 @@ static void handle_request_data(void)
             }
         }
     }
+    
+    senslog_close_ring_file(fh);
     
     if (s_lastBatchCount == 0)
     {
@@ -198,21 +217,36 @@ static void handle_reset_flags(void)
     const uint16_t ringSize = senslog_get_ring_size();
     uint16_t clearedCount = 0;
     
-    for (uint16_t i = 0; i < ringSize; i++)
+    // First pass: collect indices that need clearing (with file open once for reading)
+    static uint16_t indicesToClear[256];  // Reasonable batch size
+    uint16_t numToClear = 0;
+    
+    void* fh = senslog_open_ring_read();
+    if (fh)
     {
-        uint32_t sensorValue = 0;
-        uint32_t timestamp = 0;
-        uint8_t flags = 0;
-        
-        if (senslog_read_entry_raw(i, &sensorValue, &timestamp, &flags))
+        for (uint16_t i = 0; i < ringSize && numToClear < 256; i++)
         {
-            if (flags & SENSLOG_FLAG_READOUT_DONE)
+            uint32_t sensorValue = 0;
+            uint32_t timestamp = 0;
+            uint8_t flags = 0;
+            
+            if (senslog_read_entry_raw_from_file(fh, i, &sensorValue, &timestamp, &flags))
             {
-                if (senslog_clear_flags(i, SENSLOG_FLAG_READOUT_DONE))
+                if (flags & SENSLOG_FLAG_READOUT_DONE)
                 {
-                    clearedCount++;
+                    indicesToClear[numToClear++] = i;
                 }
             }
+        }
+        senslog_close_ring_file(fh);
+    }
+    
+    // Second pass: clear flags (each clear still opens/closes file for write)
+    for (uint16_t j = 0; j < numToClear; j++)
+    {
+        if (senslog_clear_flags(indicesToClear[j], SENSLOG_FLAG_READOUT_DONE))
+        {
+            clearedCount++;
         }
     }
     

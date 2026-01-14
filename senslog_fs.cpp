@@ -53,36 +53,22 @@ void nvs_print_all_entries()
   Serial.println("=== NVS Log Dump ===");
   Serial.println("Index\tTimestamp\tValue\tRTC Valid\tDate");
 
-  if (!senslog_init())
-    return;
-
-  File f = LittleFS.open("/senslog.bin", "r");
-  if (!f) {
+  void* fh = senslog_open_ring_read();
+  if (!fh) {
     Serial.println("Failed to open ring file");
     return;
   }
 
   uint16_t count = 0;
-  const uint16_t maxEntries = 10 * 24 * 60; // kRingSize
+  const uint16_t maxEntries = senslog_get_ring_size();
 
   for (uint16_t i = 0; i < maxEntries; i++) {
     uint32_t sensorValue = 0;
     uint32_t unixTimestamp = 0;
-    uint8_t rtcValidByte = 0;
-    uint8_t pad[3];
+    uint8_t flags = 0;
 
-    // Read entry directly (12 bytes: 4 + 4 + 1 + 3)
-    if (f.read((uint8_t*)&sensorValue, 4) != 4) break;
-    if (f.read((uint8_t*)&unixTimestamp, 4) != 4) break;
-    if (f.read(&rtcValidByte, 1) != 1) break;
-    if (f.read(pad, 3) != 3) break;
-
-    // Skip empty slots
-    if (unixTimestamp == 0 && sensorValue == 0) {
-      // Serial.print(i);
-      // Serial.println("\t<empty>");
+    if (!senslog_read_entry_raw_from_file(fh, i, &sensorValue, &unixTimestamp, &flags))
       continue;
-    }
 
     char dateStr[20];
     formatEpochSeconds(unixTimestamp, dateStr, sizeof(dateStr), false);
@@ -93,13 +79,13 @@ void nvs_print_all_entries()
     Serial.print("\t");
     Serial.print(sensorValue);
     Serial.print("\t");
-    Serial.print(rtcValidByte ? "valid" : "invalid");
+    Serial.print((flags & SENSLOG_FLAG_RTC_VALID) ? "valid" : "invalid");
     Serial.print("\t");
     Serial.println(dateStr);
     count++;
   }
 
-  f.close();
+  senslog_close_ring_file(fh);
 
   Serial.print("=== Total entries: ");
   Serial.print(count);
@@ -455,6 +441,64 @@ bool senslog_read_entry_raw(uint16_t index, uint32_t *sensorValue, uint32_t *uni
     *flags = e.rtcValid;  // The full flags byte
 
   return true;
+}
+
+void* senslog_open_ring_read(void) {
+  if (!senslog_init())
+    return nullptr;
+
+  File* f = new File(LittleFS.open(kRingPath, "r"));
+  if (!*f) {
+    delete f;
+    return nullptr;
+  }
+  return f;
+}
+
+bool senslog_read_entry_raw_from_file(void* fileHandle, uint16_t index, uint32_t *sensorValue, uint32_t *unixTimestamp, uint8_t *flags) {
+  if (sensorValue)
+    *sensorValue = 0;
+  if (unixTimestamp)
+    *unixTimestamp = 0;
+  if (flags)
+    *flags = 0;
+  if (!fileHandle)
+    return false;
+
+  File* f = (File*)fileHandle;
+
+  const uint16_t slot = (uint16_t)(index % kRingSize);
+  const size_t offsetBytes = (size_t)slot * sizeof(LogEntry);
+
+  if (!f->seek(offsetBytes, SeekSet)) {
+    return false;
+  }
+
+  LogEntry e;
+  const size_t n = f->read((uint8_t *)&e, sizeof(e));
+  if (n != sizeof(e))
+    return false;
+
+  // Unwritten slots are all zeros.
+  if (e.unixTimestamp == 0 && e.sensorValue == 0)
+    return false;
+
+  if (sensorValue)
+    *sensorValue = e.sensorValue;
+  if (unixTimestamp)
+    *unixTimestamp = e.unixTimestamp;
+  if (flags)
+    *flags = e.rtcValid;  // The full flags byte
+
+  return true;
+}
+
+void senslog_close_ring_file(void* fileHandle) {
+  if (!fileHandle)
+    return;
+  File* f = (File*)fileHandle;
+  f->close();
+  delete f;
 }
 
 bool senslog_set_flags(uint16_t index, uint8_t flagsToSet) {
