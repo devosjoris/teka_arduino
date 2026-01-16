@@ -135,6 +135,14 @@ static void handle_request_data(void)
                     
                     // Write to tag
                     write_string_tag(s_tag, addr, (uint8_t*)&entry, sizeof(entry));
+                    //check if write was successful
+                    int readback_sensorValue = read_int_tag(s_tag, addr);
+                    int readback_unixTimestamp = read_int_tag(s_tag, addr+4);
+                    int readback_flags = read_int_tag(s_tag, addr+8);//padded with zeros
+                    //write ok?
+                    if(readback_sensorValue != sensorValue || readback_unixTimestamp != timestamp || readback_flags != flags){
+                        Serial.println(F("NFC_DT: Write verification failed"));
+                    }
                     addr += sizeof(entry);
                 }
             }
@@ -171,6 +179,7 @@ static void handle_request_data(void)
     Serial.println(crc, HEX);
     
     write_status(NFC_DT_STATUS_DATA_READY);
+    Serial.println(F("NFC_DT: Data ready"));
     clear_command();
 }
 
@@ -284,6 +293,7 @@ void nfc_dt_init(SFE_ST25DV64KC* tag)
 
 bool nfc_dt_poll(void)
 {
+    Serial.print("p");
     if (!s_initialized || s_tag == nullptr)
     {
         return false;

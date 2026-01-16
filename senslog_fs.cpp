@@ -322,13 +322,15 @@ void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLo
 }
 
 uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
-  Serial.println("=== NVS TS FIXING ===");
-  Serial.println("Index\tTimestamp\tValue\tDate");
   uint32_t rtc_diff = rtc_new - rtc_old;
   uint16_t fixedCount = 0;
-  uint16_t totalCount = 0;
-  const uint16_t maxEntries = 10 * 24 * 60; // kRingSize
+  const uint16_t maxEntries = kRingSize; // kRingSize
   const size_t entrySize = 12; // sizeof(LogEntry)
+  const size_t chunkEntries = 64; // Process 64 entries at a time (768 bytes), for faster flash writes...
+  const size_t chunkSize = chunkEntries * entrySize;
+
+  //since writing to flash is slow, we do this in chunks (64 bytes at a time)
+  //this is much faster...
 
   if (!senslog_init())
     return 0;
@@ -339,49 +341,55 @@ uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
     return 0;
   }
 
-  for (uint16_t i = 0; i < maxEntries; i++) {
-    uint32_t sensorValue = 0;
-    uint32_t unixTimestamp = 0;
-    uint8_t rtcValidByte = 0;
-    uint8_t pad[3];
+  uint8_t buffer[chunkSize];
 
-    // Read entry directly (12 bytes: 4 + 4 + 1 + 3)
-    if (f.read((uint8_t*)&sensorValue, 4) != 4) break;
-    if (f.read((uint8_t*)&unixTimestamp, 4) != 4) break;
-    if (f.read(&rtcValidByte, 1) != 1) break;
-    if (f.read(pad, 3) != 3) break;
+  for (uint16_t chunkStart = 0; chunkStart < maxEntries; chunkStart += chunkEntries) {
+    const size_t offsetBytes = (size_t)chunkStart * entrySize;
+    const uint16_t entriesToProcess = (chunkStart + chunkEntries > maxEntries) 
+                                      ? (maxEntries - chunkStart) : chunkEntries;
+    const size_t bytesToRead = entriesToProcess * entrySize;
 
-    // Skip empty slots
-    if (unixTimestamp == 0 && sensorValue == 0)
-      continue;
+    // Read chunk into RAM
+    if (!f.seek(offsetBytes, SeekSet)) break;
+    if (f.read(buffer, bytesToRead) != bytesToRead) break;
 
-    // Skip already valid entries
-    if (rtcValidByte != 0)
-      continue;
+    bool chunkModified = false;
 
-    totalCount++;
+    // Process entries in RAM
+    for (uint16_t j = 0; j < entriesToProcess; j++) {
+      uint8_t* entry = buffer + (j * entrySize);
+      uint32_t sensorValue = *(uint32_t*)(entry);
+      uint32_t unixTimestamp = *(uint32_t*)(entry + 4);
+      uint8_t rtcValidByte = entry[8];
 
-    // Update timestamp
-    unixTimestamp += rtc_diff;
-    rtcValidByte = 1;
+      // Skip empty slots
+      if (unixTimestamp == 0 && sensorValue == 0)
+        continue;
 
-    // Seek back 12 bytes (entry size) from current position to overwrite
-    if (!f.seek(-(int32_t)entrySize, SeekCur)) break;
-    f.write((const uint8_t*)&sensorValue, 4);
-    f.write((const uint8_t*)&unixTimestamp, 4);
-    f.write(&rtcValidByte, 1);
-    f.write(pad, 3);
+      // Skip already valid entries
+      if ((rtcValidByte & 0x1) != 0)
+        continue;
 
-    fixedCount++;
+      // Update in buffer
+      unixTimestamp += rtc_diff;
+      *(uint32_t*)(entry + 4) = unixTimestamp;
+      entry[8] = 1;
+
+      chunkModified = true;
+      fixedCount++;
+    }
+
+    // Write back only if modified
+    if (chunkModified) {
+      if (!f.seek(offsetBytes, SeekSet)) break;
+      f.write(buffer, bytesToRead);
+    }
   }
 
   f.close();
 
-  Serial.print("=== Total entries: ");
-  Serial.print(totalCount);
-  Serial.print(", fixed: ");
-  Serial.print(fixedCount);
-  Serial.println(" ===");
+  Serial.print("TS fix: ");
+  Serial.println(fixedCount);
 
   return fixedCount;
 }

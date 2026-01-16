@@ -67,7 +67,7 @@ class SFE_ST25DV64KC;
 #define NFC_DT_ENTRY_SIZE       12
 
 // Maximum entries per transfer batch (512 log entries)
-#define NFC_DT_MAX_ENTRIES      512
+#define NFC_DT_MAX_ENTRIES      10  //reduced for debugging 
 
 // Maximum data payload size per transfer batch (512 entries * 12 bytes = 6144 bytes)
 #define NFC_DT_MAX_DATA_SIZE    (NFC_DT_MAX_ENTRIES * NFC_DT_ENTRY_SIZE)
