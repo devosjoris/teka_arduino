@@ -66,8 +66,8 @@ class SFE_ST25DV64KC;
 // Each log entry is 12 bytes (same as senslog_fs LogEntry)
 #define NFC_DT_ENTRY_SIZE       12
 
-// Maximum entries per transfer batch (512 log entries)
-#define NFC_DT_MAX_ENTRIES      10  //reduced for debugging 
+// Maximum entries per transfer batch (64 log entries)
+#define NFC_DT_MAX_ENTRIES      64 
 
 // Maximum data payload size per transfer batch (512 entries * 12 bytes = 6144 bytes)
 #define NFC_DT_MAX_DATA_SIZE    (NFC_DT_MAX_ENTRIES * NFC_DT_ENTRY_SIZE)

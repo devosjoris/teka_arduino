@@ -581,7 +581,7 @@ void loop()
     }
 
     //check if we received a command over nfc
-    nfc_dt_poll(); //at the end of the poll we open the nfc for write / read over nfc
+    nfc_dt_poll(); //at the end of the poll we open the nfc for write / read over nfc, so the delay after this needs to be long enough...
     //Serial.print(".");
     delay(2000);
 }

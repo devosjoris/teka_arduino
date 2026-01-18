@@ -578,3 +578,145 @@ bool senslog_clear_flags(uint16_t index, uint8_t flagsToClear) {
   f.close();
   return w == sizeof(e);
 }
+
+uint16_t senslog_set_flags_batch(const uint16_t* indices, uint16_t count, uint8_t flagsToSet) {
+  if (!senslog_init() || !indices || count == 0)
+    return 0;
+
+  const size_t entrySize = sizeof(LogEntry);
+  const size_t chunkEntries = 64;  // Process 64 entries at a time for efficient flash writes
+  const size_t chunkSize = chunkEntries * entrySize;
+
+  File f = LittleFS.open(kRingPath, "r+");
+  if (!f)
+    return 0;
+
+  // Build a bitmap of which slots need the flag set
+  // Use a simple array to track which slots in current chunk need updating
+  static bool needsUpdate[64];
+  uint8_t buffer[chunkSize];
+  uint16_t updatedCount = 0;
+
+  for (uint16_t chunkStart = 0; chunkStart < kRingSize; chunkStart += chunkEntries) {
+    const uint16_t chunkEnd = (chunkStart + chunkEntries > kRingSize) 
+                              ? kRingSize : (chunkStart + chunkEntries);
+    const uint16_t entriesToProcess = chunkEnd - chunkStart;
+    const size_t bytesToRead = entriesToProcess * entrySize;
+    const size_t offsetBytes = (size_t)chunkStart * entrySize;
+
+    // Check which indices fall into this chunk
+    memset(needsUpdate, 0, sizeof(needsUpdate));
+    bool anyInChunk = false;
+    for (uint16_t i = 0; i < count; i++) {
+      uint16_t slot = (uint16_t)(indices[i] % kRingSize);
+      if (slot >= chunkStart && slot < chunkEnd) {
+        needsUpdate[slot - chunkStart] = true;
+        anyInChunk = true;
+      }
+    }
+
+    if (!anyInChunk)
+      continue;
+
+    // Read chunk into RAM
+    if (!f.seek(offsetBytes, SeekSet))
+      continue;
+    if (f.read(buffer, bytesToRead) != bytesToRead)
+      continue;
+
+    bool chunkModified = false;
+
+    // Process entries in RAM
+    for (uint16_t j = 0; j < entriesToProcess; j++) {
+      if (!needsUpdate[j])
+        continue;
+
+      uint8_t* entry = buffer + (j * entrySize);
+      uint8_t* flagsByte = entry + 8;  // Offset to rtcValid/flags byte
+
+      if ((*flagsByte & flagsToSet) != flagsToSet) {
+        *flagsByte |= flagsToSet;
+        chunkModified = true;
+        updatedCount++;
+      }
+    }
+
+    // Write back only if modified
+    if (chunkModified) {
+      if (f.seek(offsetBytes, SeekSet)) {
+        f.write(buffer, bytesToRead);
+      }
+    }
+  }
+
+  f.close();
+  return updatedCount;
+}
+
+uint16_t senslog_clear_flags_batch(const uint16_t* indices, uint16_t count, uint8_t flagsToClear) {
+  if (!senslog_init() || !indices || count == 0)
+    return 0;
+
+  const size_t entrySize = sizeof(LogEntry);
+  const size_t chunkEntries = 64;
+  const size_t chunkSize = chunkEntries * entrySize;
+
+  File f = LittleFS.open(kRingPath, "r+");
+  if (!f)
+    return 0;
+
+  static bool needsUpdate[64];
+  uint8_t buffer[chunkSize];
+  uint16_t updatedCount = 0;
+
+  for (uint16_t chunkStart = 0; chunkStart < kRingSize; chunkStart += chunkEntries) {
+    const uint16_t chunkEnd = (chunkStart + chunkEntries > kRingSize) 
+                              ? kRingSize : (chunkStart + chunkEntries);
+    const uint16_t entriesToProcess = chunkEnd - chunkStart;
+    const size_t bytesToRead = entriesToProcess * entrySize;
+    const size_t offsetBytes = (size_t)chunkStart * entrySize;
+
+    memset(needsUpdate, 0, sizeof(needsUpdate));
+    bool anyInChunk = false;
+    for (uint16_t i = 0; i < count; i++) {
+      uint16_t slot = (uint16_t)(indices[i] % kRingSize);
+      if (slot >= chunkStart && slot < chunkEnd) {
+        needsUpdate[slot - chunkStart] = true;
+        anyInChunk = true;
+      }
+    }
+
+    if (!anyInChunk)
+      continue;
+
+    if (!f.seek(offsetBytes, SeekSet))
+      continue;
+    if (f.read(buffer, bytesToRead) != bytesToRead)
+      continue;
+
+    bool chunkModified = false;
+
+    for (uint16_t j = 0; j < entriesToProcess; j++) {
+      if (!needsUpdate[j])
+        continue;
+
+      uint8_t* entry = buffer + (j * entrySize);
+      uint8_t* flagsByte = entry + 8;
+
+      if (*flagsByte & flagsToClear) {
+        *flagsByte &= ~flagsToClear;
+        chunkModified = true;
+        updatedCount++;
+      }
+    }
+
+    if (chunkModified) {
+      if (f.seek(offsetBytes, SeekSet)) {
+        f.write(buffer, bytesToRead);
+      }
+    }
+  }
+
+  f.close();
+  return updatedCount;
+}

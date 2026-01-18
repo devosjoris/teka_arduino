@@ -62,6 +62,13 @@ void senslog_close_ring_file(void* fileHandle);
 bool senslog_set_flags(uint16_t index, uint8_t flagsToSet);
 bool senslog_clear_flags(uint16_t index, uint8_t flagsToClear);
 
+// Batch set flags on multiple entries at once (faster than calling senslog_set_flags in a loop)
+// Indices array does NOT need to be sorted. Returns the number of entries successfully updated.
+uint16_t senslog_set_flags_batch(const uint16_t* indices, uint16_t count, uint8_t flagsToSet);
+
+// Batch clear flags on multiple entries at once
+uint16_t senslog_clear_flags_batch(const uint16_t* indices, uint16_t count, uint8_t flagsToClear);
+
 void formatEpochSeconds(uint32_t epochSec, char* out, size_t outSize, bool useLocal = false);
 
 #ifdef __cplusplus

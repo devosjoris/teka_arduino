@@ -188,15 +188,8 @@ static void handle_ack_data(void)
 {
     Serial.println(F("NFC_DT: Processing ACK"));
     
-    // Mark all entries from the last batch as READOUT_DONE
-    uint16_t markedCount = 0;
-    for (uint16_t i = 0; i < s_lastBatchCount; i++)
-    {
-        if (senslog_set_flags(s_lastBatchIndices[i], SENSLOG_FLAG_READOUT_DONE))
-        {
-            markedCount++;
-        }
-    }
+    // Mark all entries from the last batch as READOUT_DONE using batch write
+    const uint16_t markedCount = senslog_set_flags_batch(s_lastBatchIndices, s_lastBatchCount, SENSLOG_FLAG_READOUT_DONE);
     
     Serial.print(F("NFC_DT: Marked "));
     Serial.print(markedCount);
@@ -250,14 +243,8 @@ static void handle_reset_flags(void)
         senslog_close_ring_file(fh);
     }
     
-    // Second pass: clear flags (each clear still opens/closes file for write)
-    for (uint16_t j = 0; j < numToClear; j++)
-    {
-        if (senslog_clear_flags(indicesToClear[j], SENSLOG_FLAG_READOUT_DONE))
-        {
-            clearedCount++;
-        }
-    }
+    // Second pass: clear flags using batch write for better performance
+    clearedCount = senslog_clear_flags_batch(indicesToClear, numToClear, SENSLOG_FLAG_READOUT_DONE);
     
     Serial.print(F("NFC_DT: Cleared flags on "));
     Serial.print(clearedCount);
