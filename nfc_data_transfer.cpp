@@ -101,7 +101,11 @@ static void handle_request_data(void)
     }
     
     Serial.println(F("NFC_DT: write to eeprom:"));
-    for (uint16_t i = 0; i < ringSize && s_lastBatchCount < NFC_DT_MAX_ENTRIES; i++)
+
+    //we loop over all entries, count the pending ones
+    //then after the loop we write the first NFC_DT_MAX_ENTRIES to eeprom and wait for a new poll -> ack/nack from device
+    //not very efficient because we read all entries every time (but flash read is fast anyhow so this should work...)
+    for (uint16_t i = 0; i < ringSize; i++) 
     {
         uint32_t sensorValue = 0;
         uint32_t timestamp = 0;
@@ -109,7 +113,6 @@ static void handle_request_data(void)
         
         if (senslog_read_entry_raw_from_file(fh, i, &sensorValue, &timestamp, &flags))
         {
-            Serial.println(i);
             // Entry exists - check if already read out
             if ((flags & SENSLOG_FLAG_READOUT_DONE) == 0)
             {
@@ -117,6 +120,7 @@ static void handle_request_data(void)
                 
                 if (s_lastBatchCount < NFC_DT_MAX_ENTRIES)
                 {
+                    //Serial.println(i);
                     // Remember this index for marking later
                     s_lastBatchIndices[s_lastBatchCount] = i;
                     s_lastBatchCount++;
@@ -144,6 +148,13 @@ static void handle_request_data(void)
                         Serial.println(F("NFC_DT: Write verification failed"));
                     }
                     addr += sizeof(entry);
+                }
+                //when totalpending is larger than max entries
+                //we can stop, the app wil know that total pending > max entries so it will read again
+
+                if(totalPending > NFC_DT_MAX_ENTRIES){
+                    Serial.println(F("NFC_DT: More pending entries than max batch size"));
+                    i = ringSize; //break the loop
                 }
             }
         }
