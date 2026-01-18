@@ -5,6 +5,9 @@
 
 #include "SparkFun_ST25DV64KC_Arduino_Library.h"
 
+// External function from main sketch to sync RTC from NFC tag
+extern void sync_rtc_from_tag(void);
+
 namespace {
 
 static SFE_ST25DV64KC* s_tag = nullptr;
@@ -82,6 +85,8 @@ static void handle_request_data(void)
     Serial.println(F("NFC_DT: Processing data request"));
     
     write_status(NFC_DT_STATUS_BUSY);
+
+    sync_rtc_from_tag();
     
     const uint16_t ringSize = senslog_get_ring_size();
     

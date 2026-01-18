@@ -195,6 +195,39 @@ void init_memspace(){
 }
 
 
+// Sync RTC from timestamp written to NFC tag by app
+// Can be called from main loop or nfc_data_transfer.cpp
+void sync_rtc_from_tag(void)
+{
+    if (read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) != 0x0000501D) {
+        return; // No new timestamp set by app
+    }
+    
+    Serial.println("NEW_TIMESTAMP");
+    current_data_add = find_write_addr(current_data_add);
+    int timestamp = read_int_tag(&tag, MEM_VAL_TIMESTAMP); // LSB handled by app
+    
+    if (timestamp > valid_time_threshold) {
+        // 1) read current RTC setting -> rtc_old
+        const uint32_t rtc_old = rtc.getUnixTimestamp();
+
+        // 2) read new RTC setting -> rtc_new (from tag "EEPROM")
+        const uint32_t rtc_new = ((uint32_t)timestamp);
+
+        // 3) fix all entries where rtc_valid == false:
+        // rtc_fixed = rtc_new + (rtc_invalid - rtc_old)
+        //nvs_print_all_entries(); // debug
+        nvs_fix_invalid_timestamps(rtc_old, rtc_new);
+        //Serial.println("AFTER TS FIX:");
+        //nvs_print_all_entries(); // debug
+        
+        // Finally, set the RTC itself.
+        synch_rtc(rtc_new);
+    }
+    
+    write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
+}
+
 void setup_bmv080(){
   if (bmv080.begin(BMV080_ADDR, Wire) == false) {
       Serial.println("BMV080 not detected at default I2C address. Check your jumpers and the hookup guide. Freezing...");
@@ -529,31 +562,7 @@ void loop()
     // }
 
     //phone sets new timestamp on connect -> ...
-    // dump_tag_words64(&tag, 0); //check last 64 words before timestamp
-    // Serial.println(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP));
-    if(read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) == 0x0000501D){
-      //new timestamp set by the app, add this timestamp to the ringbuffer...
-      Serial.println("NEW_TIMESTAMP");
-      current_data_add = find_write_addr(current_data_add);
-      int timestamp = read_int_tag(&tag, MEM_VAL_TIMESTAMP); //this will alwasy have the lsb set, this is beeing handled by the app...
-      if(timestamp > valid_time_threshold){
-        // 1) read current RTC setting -> rtc_old
-        const uint32_t rtc_old = rtc.getUnixTimestamp();
-
-        // 2) read new RTC setting -> rtc_new (from tag "EEPROM")
-        const uint32_t rtc_new = ((uint32_t)timestamp);
-
-        // 3) fix all entries where rtc_valid == false:
-        // rtc_fixed = rtc_new + (rtc_invalid - rtc_old)
-        nvs_print_all_entries(); //debug
-        nvs_fix_invalid_timestamps(rtc_old, rtc_new);
-        Serial.println("AFTER TS FIX:");
-        nvs_print_all_entries(); //debug
-        // Finally, set the RTC itself.
-        synch_rtc(rtc_new);
-      }
-      write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
-    }
+    sync_rtc_from_tag();
 
     float pm25 = 0.0;
     if(bmv080.readSensor()  || SIM_BMV080)
