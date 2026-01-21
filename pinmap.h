@@ -45,10 +45,11 @@
     #define MEM_VAL_NEWSETTINGS         32    //set by app
     #define MEM_VAL_NEWTIMESTAMP        36    //set by app
 
+    #define MEM_VAL_DATA_VALID          92
     #define MEM_VAL_USER_NAME_LENGTH    44
     #define MEM_VAL_USER_NAME           48
 
-    #define MEM_VAL_DATA_VALID          92
+    
 
     #define MEM_VAL_DATA_START          (100 *2) 
     #define MEM_VAL_DATA_END            (8188) //last bit

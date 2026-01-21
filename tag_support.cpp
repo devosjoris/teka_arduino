@@ -10,13 +10,13 @@ extern int GLOBAL_ERROR;
 // Force I2C cache invalidation on every read
 // The RF_WRITE flag doesn't reliably toggle, so we always refresh
 //hard required !!!!
-static void disable_rf(SFE_ST25DV64KC* tag)
+void disable_rf(SFE_ST25DV64KC* tag)
 {
   tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, 0x2003, 0x02); // RF_DIS=1
   delayMicroseconds(500);
 }
 
-static void enable_rf(SFE_ST25DV64KC* tag)
+void enable_rf(SFE_ST25DV64KC* tag)
 {
   tag->st25_io.writeSingleByte(SF_ST25DV64KC_ADDRESS::DATA, 0x2003, 0x00); // RF_DIS=0
 }

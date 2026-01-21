@@ -395,6 +395,7 @@ uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
 }
 
 uint16_t senslog_mark_unread() {
+  
   uint16_t fixedCount = 0;
   const uint16_t maxEntries = kRingSize; // kRingSize
   const size_t entrySize = 12; // sizeof(LogEntry)

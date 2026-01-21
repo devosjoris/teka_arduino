@@ -86,6 +86,8 @@ uint16_t current_data_add     = MEM_VAL_DATA_START;
 uint8_t measurement_mode      = 1;
 uint8_t user_name_length      = 0;
 uint8_t user_name[30];
+uint16_t warning_value        = 5000; //mg/m3
+uint16_t maximum_value        = 7000; //mg/m3
 
 
 void nvs_init()
@@ -128,29 +130,29 @@ void drawStringCenter(Paint* p, sFONT* font, int box_x0, int box_y0, char* strin
   p->DrawStringAt(text_x, text_y, string_to_draw, font, add_box ? UNCOLORED : COLORED);
 }
 
-uint16_t find_write_addr(uint16_t guess_addr){
-  Serial.println("search start");
-  Serial.println(guess_addr);
-  for(uint16_t i =0; i< (60000/4); i=i+4){
-    //Serial.println(i);
-    uint32_t temp_addr = guess_addr +i;
-    if(temp_addr >= MEM_VAL_DATA_END){
-      temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
-    }
-    if(read_int_tag(&tag, temp_addr) == 0xC1EAC1EA){
-      if(abs_x(temp_addr - read_int_tag(&tag, MEM_PTR_LAST_WRITE)) > 100){
-        write_int_tag(&tag, MEM_PTR_LAST_WRITE, temp_addr);
-      }
-      return temp_addr;
-    }
-  }
-  GLOBAL_ERROR = 1;
-  return 0;
+// uint16_t find_write_addr(uint16_t guess_addr){
+//   Serial.println("search start");
+//   Serial.println(guess_addr);
+//   for(uint16_t i =0; i< (60000/4); i=i+4){
+//     //Serial.println(i);
+//     uint32_t temp_addr = guess_addr +i;
+//     if(temp_addr >= MEM_VAL_DATA_END){
+//       temp_addr = (temp_addr - MEM_VAL_DATA_END) + MEM_VAL_DATA_START;
+//     }
+//     if(read_int_tag(&tag, temp_addr) == 0xC1EAC1EA){
+//       if(abs_x(temp_addr - read_int_tag(&tag, MEM_PTR_LAST_WRITE)) > 100){
+//         write_int_tag(&tag, MEM_PTR_LAST_WRITE, temp_addr);
+//       }
+//       return temp_addr;
+//     }
+//   }
+//   GLOBAL_ERROR = 1;
+//   return 0;
 
-}
+// }
 
 void reset_memspace(){
-  Serial.print("INIT");
+  Serial.println("INIT RESET TAG MEMSPACE");
   write_int_tag(&tag, MEM_PTR_LAST_WRITE, MEM_VAL_DATA_START);
   write_int_tag(&tag, MEM_PTR_LAST_READ,  MEM_VAL_DATA_START);
 
@@ -163,27 +165,57 @@ void reset_memspace(){
   write_int_tag(&tag, MEM_VAL_WARNING, 5000);
   write_int_tag(&tag, MEM_VAL_LIMIT, 7000);
 
-  write_int_tag(&tag, MEM_VAL_DATA_VALID, (((0x501d) << 16) + FW_REV));
+  write_int_tag(&tag, MEM_VAL_DATA_VALID, 20509);
+  uint32_t readout =0;
+      readout = read_int_tag(&tag, MEM_VAL_DATA_VALID);
+    Serial.print("READ MEM_VAL_DATA_VALID: ");
+    Serial.println(readout, HEX);
+
+  Serial.println("DONE RESET TAG MEMSPACE");
 }
 
 void init_memspace(){
   Serial.println("CHECK TAG MEMSPACE");
-  if(read_int_tag(&tag, MEM_VAL_DATA_VALID) != (((0x501d) << 16) + FW_REV) ){ //not yet initialized
-    Serial.println("TAG MEMSPACE INVALID -> RESET");
-    reset_memspace();
+  disable_rf(&tag);
+  uint32_t readout =0;
+  for(int i=0; i< 10; i++){
+    readout = read_int_tag(&tag, MEM_VAL_DATA_VALID);
+    Serial.print("READ MEM_VAL_DATA_VALID: ");
+    Serial.println(readout, HEX);
+    if(readout != 0x501d){
+      Serial.println("TAG MEMSPACE INVALID -> RESET");
+      reset_memspace();
+    }
   }
   Serial.print("READ/RESTORE values from TAG MEMSPACE to global vars");
 
   current_data_add = read_int_tag(&tag, MEM_PTR_LAST_WRITE);
-  current_data_add = find_write_addr(current_data_add);
+  // current_data_add = find_write_addr(current_data_add);
   measurement_mode = read_int_tag(&tag, MEM_VAL_MEASURE_MODE);
   Serial.println("measurement_mode");
   Serial.println(measurement_mode);
 
-  if(measurement_mode > 2) GLOBAL_ERROR = 1; //invalid value 
+  if(measurement_mode > 2)
+    GLOBAL_ERROR = 1; //invalid value 
+  
   user_name_length = read_int_tag(&tag, MEM_VAL_USER_NAME_LENGTH);
-  if(user_name_length > 40) GLOBAL_ERROR = 1; //invalid value 
-  else                      read_string_tag(&tag, MEM_VAL_USER_NAME, user_name, user_name_length);
+  if(user_name_length > 40)
+    GLOBAL_ERROR = 1; //invalid value 
+  else
+    read_string_tag(&tag, MEM_VAL_USER_NAME, user_name, user_name_length);
+
+  Serial.print("user_name: ");
+  for(int i =0; i< user_name_length; i++){ 
+    Serial.print((char)user_name[i]);
+  }
+
+  warning_value = read_int_tag(&tag, MEM_VAL_WARNING);
+  Serial.println("warning_value");
+  Serial.println(warning_value);  
+  maximum_value = read_int_tag(&tag, MEM_VAL_LIMIT);
+  Serial.println("maximum_value");
+  Serial.println(maximum_value);
+
   
   if(GLOBAL_ERROR){
     reset_memspace();
@@ -192,19 +224,36 @@ void init_memspace(){
   else{
     Serial.println("TAG MEMSPACE RESTORED");
   }
+
+  enable_rf(&tag);
 }
 
 
 // Sync RTC from timestamp written to NFC tag by app
 // Can be called from main loop or nfc_data_transfer.cpp
+
+// Last RTC sync time (ms since boot)
+static uint32_t s_lastRtcSyncMs = 0;
+static const uint32_t RTC_SYNC_INTERVAL_MS = 120000; // 2 minutes
+
+
 void sync_rtc_from_tag(void)
 {
+
+
+    uint32_t now = millis();
+    if (s_lastRtcSyncMs != 0 && ((now - s_lastRtcSyncMs) < RTC_SYNC_INTERVAL_MS))
+    {    
+        return; // Too soon since last sync
+    }
+
     if (read_int_tag(&tag, MEM_VAL_NEWTIMESTAMP) != 0x0000501D) {
         return; // No new timestamp set by app
     }
+
+
     
     Serial.println("NEW_TIMESTAMP");
-    current_data_add = find_write_addr(current_data_add);
     int timestamp = read_int_tag(&tag, MEM_VAL_TIMESTAMP); // LSB handled by app
     
     if (timestamp > valid_time_threshold) {
@@ -226,6 +275,23 @@ void sync_rtc_from_tag(void)
     }
     
     write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0xC1EAC1EA);
+    s_lastRtcSyncMs = millis();
+}
+
+void sync_settings_from_tag(void)
+{
+    Serial.println("SYNC SETTINGS FROM TAG");
+    int readout = read_int_tag(&tag, MEM_VAL_NEWSETTINGS);
+    Serial.println(readout);
+
+    if (readout  != 0x0000501D) {
+        return; // No new timestamp set by app
+    }
+
+    Serial.println("NEW_SETTINGS");
+    init_memspace();
+    write_int_tag(&tag, MEM_VAL_NEWSETTINGS, 0xC1EAC1EA);
+
 }
 
 void setup_bmv080(){
@@ -433,9 +499,7 @@ void setup()
       delay(100);
       setRgbLed(0, 1, 0); // green
       delay(100);
-      setRgbLed(0, 0, 1); // blue
-      delay(100);
-      setRgbLed(0, 0, 0); // off
+      setRgbLed(0, 0, 1); // blue //keep blue while running setup
     }
 
     //power up the dcdc and the 3v3 regulator
@@ -550,6 +614,7 @@ void setup()
   #endif
 
   senslog_mark_unread();
+  setRgbLed(0, 0, 0); // setup done, turn off LED
 
 
 }
@@ -565,6 +630,7 @@ void loop()
 
     //phone sets new timestamp on connect -> ...
     sync_rtc_from_tag();
+    sync_settings_from_tag();
 
     float pm25 = 0.0;
     if(bmv080.readSensor()  || SIM_BMV080)
@@ -583,10 +649,7 @@ void loop()
             Serial.print("\tObstructed");
             pm25_int = 0x0fff;
         }
-        //store this in the memory:
-        current_data_add = find_write_addr(current_data_add);
-
-
+        //store in nvs
         uint32_t ts = rtc.getUnixTimestamp();
         nvs_log_packed(pm25_int, ts);
     }
