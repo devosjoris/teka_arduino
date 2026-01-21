@@ -549,6 +549,8 @@ void setup()
     // epd.Sleep();
   #endif
 
+  senslog_mark_unread();
+
 
 }
 

@@ -394,6 +394,71 @@ uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new) {
   return fixedCount;
 }
 
+uint16_t senslog_mark_unread() {
+  uint16_t fixedCount = 0;
+  const uint16_t maxEntries = kRingSize; // kRingSize
+  const size_t entrySize = 12; // sizeof(LogEntry)
+  const size_t chunkEntries = 64; // Process 64 entries at a time (768 bytes), for faster flash writes...
+  const size_t chunkSize = chunkEntries * entrySize;
+
+  //since writing to flash is slow, we do this in chunks (64 bytes at a time)
+  //this is much faster...
+
+  if (!senslog_init())
+    return 0;
+
+  File f = LittleFS.open("/senslog.bin", "r+");
+  if (!f) {
+    Serial.println("Failed to open ring file");
+    return 0;
+  }
+
+  uint8_t buffer[chunkSize];
+
+  for (uint16_t chunkStart = 0; chunkStart < maxEntries; chunkStart += chunkEntries) {
+    const size_t offsetBytes = (size_t)chunkStart * entrySize;
+    const uint16_t entriesToProcess = (chunkStart + chunkEntries > maxEntries) 
+                                      ? (maxEntries - chunkStart) : chunkEntries;
+    const size_t bytesToRead = entriesToProcess * entrySize;
+
+    // Read chunk into RAM
+    if (!f.seek(offsetBytes, SeekSet)) break;
+    if (f.read(buffer, bytesToRead) != bytesToRead) break;
+
+    bool chunkModified = false;
+
+    // Process entries in RAM
+    for (uint16_t j = 0; j < entriesToProcess; j++) {
+      uint8_t* entry = buffer + (j * entrySize);
+      uint32_t sensorValue = *(uint32_t*)(entry);
+      uint32_t unixTimestamp = *(uint32_t*)(entry + 4);
+      uint8_t rtcValidByte = entry[8];
+
+      // Skip empty slots
+      if(entry[8] == 3){
+        Serial.println("found an entry with rtcValid = 3, fixing to 1");
+        entry[8] = 1;
+
+        chunkModified = true;
+        fixedCount++;
+      }
+    }
+
+    // Write back only if modified
+    if (chunkModified) {
+      if (!f.seek(offsetBytes, SeekSet)) break;
+      f.write(buffer, bytesToRead);
+    }
+  }
+
+  f.close();
+
+  Serial.print("TS fix: ");
+  Serial.println(fixedCount);
+
+  return fixedCount;
+}
+
 uint16_t senslog_get_magic(void) {
   if (!senslog_init())
     return 0;

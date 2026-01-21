@@ -42,6 +42,7 @@ bool senslog_update_entry(uint16_t index, uint32_t sensorValue, uint32_t unixTim
 // Applies RTC offset fix to entries that were logged while rtcValid==false.
 // Returns the number of entries fixed.
 uint16_t senslog_fix_invalid_timestamps(uint32_t rtc_old, uint32_t rtc_new);
+uint16_t senslog_mark_unread(void); //debug put all sensor values to unread...
 
 uint16_t senslog_get_magic(void);
 uint16_t senslog_get_index(void);
