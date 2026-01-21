@@ -17,9 +17,6 @@ static bool s_initialized = false;
 static uint16_t s_lastBatchIndices[NFC_DT_MAX_ENTRIES];
 static uint16_t s_lastBatchCount = 0;
 
-// Last RTC sync time (ms since boot)
-static uint32_t s_lastRtcSyncMs = 0;
-static const uint32_t RTC_SYNC_INTERVAL_MS = 120000; // 2 minutes
 
 // CRC32 (Ethernet, reversed polynomial) - same as nfc_ota.cpp
 static uint32_t crc32_update(uint32_t crc, const uint8_t* data, size_t len)
@@ -91,12 +88,7 @@ static void handle_request_data(void)
     write_status(NFC_DT_STATUS_BUSY);
 
     // Only sync RTC if more than 1 minute since last sync
-    uint32_t now = millis();
-    if (s_lastRtcSyncMs == 0 || (now - s_lastRtcSyncMs) >= RTC_SYNC_INTERVAL_MS)
-    {
-        sync_rtc_from_tag();
-        s_lastRtcSyncMs = now;
-    }
+    sync_rtc_from_tag();
     
     const uint16_t ringSize = senslog_get_ring_size();
     
@@ -131,6 +123,10 @@ static void handle_request_data(void)
             // Entry exists - check if already read out
             if ((flags & SENSLOG_FLAG_READOUT_DONE) == 0)
             {
+                if(totalPending == 0){
+                    Serial.println("NFC_DT: First pending entry at index ");
+                    Serial.println(i);
+                }
                 totalPending++;
                 
                 if (s_lastBatchCount < NFC_DT_MAX_ENTRIES)
@@ -168,7 +164,8 @@ static void handle_request_data(void)
                 //we can stop, the app wil know that total pending > max entries so it will read again
 
                 if(totalPending > NFC_DT_MAX_ENTRIES){
-                    Serial.println(F("NFC_DT: More pending entries than max batch size"));
+                    Serial.println(F("NFC_DT: More pending entries than max batch size, last index: "));
+                    Serial.println(i);
                     i = ringSize; //break the loop
                 }
             }
