@@ -166,25 +166,26 @@ void reset_memspace(){
   write_int_tag(&tag, MEM_VAL_LIMIT, 7000);
 
   write_int_tag(&tag, MEM_VAL_DATA_VALID, 20509);
-  uint32_t readout =0;
-      readout = read_int_tag(&tag, MEM_VAL_DATA_VALID);
-    Serial.print("READ MEM_VAL_DATA_VALID: ");
-    Serial.println(readout, HEX);
+  uint32_t    readout = read_int_tag(&tag, MEM_VAL_DATA_VALID);
+  Serial.print("READ MEM_VAL_DATA_VALID: ");
+  Serial.println(readout, HEX);
 
   Serial.println("DONE RESET TAG MEMSPACE");
 }
 
 void init_memspace(){
   Serial.println("CHECK TAG MEMSPACE");
-  disable_rf(&tag);
-  uint32_t readout =0;
+  //write_int_tag(&tag, MEM_VAL_DATA_VALID, 20509);
   for(int i=0; i< 10; i++){
-    readout = read_int_tag(&tag, MEM_VAL_DATA_VALID);
+    uint32_t readout = read_int_tag(&tag, MEM_VAL_DATA_VALID);
     Serial.print("READ MEM_VAL_DATA_VALID: ");
     Serial.println(readout, HEX);
     if(readout != 0x501d){
       Serial.println("TAG MEMSPACE INVALID -> RESET");
       reset_memspace();
+    }
+    else{
+      i  = 100 ; //break
     }
   }
   Serial.print("READ/RESTORE values from TAG MEMSPACE to global vars");
@@ -224,8 +225,6 @@ void init_memspace(){
   else{
     Serial.println("TAG MEMSPACE RESTORED");
   }
-
-  enable_rf(&tag);
 }
 
 
@@ -280,8 +279,8 @@ void sync_rtc_from_tag(void)
 
 void sync_settings_from_tag(void)
 {
-    Serial.println("SYNC SETTINGS FROM TAG");
-    int readout = read_int_tag(&tag, MEM_VAL_NEWSETTINGS);
+    //Serial.println("SYNC SETTINGS FROM TAG");
+    uint32_t readout = read_int_tag(&tag, MEM_VAL_NEWSETTINGS);
     Serial.println(readout);
 
     if (readout  != 0x0000501D) {
@@ -557,7 +556,7 @@ void setup()
       return;
     }
     Serial.print("2.66inch e-Paper demo...\r\n ");
-    Serial.print("e-Paper Clear...\r\n ");
+    Serial.print("e-Paper Clear...\r\n ");    
     epd.Clear();  
     paint.SetRotate(ROTATE_90);
     
@@ -569,6 +568,7 @@ void setup()
     time_start_ms = millis();
     for(i=0; i<1; i++) {
       char date_string[20];
+      unix_timestamp = rtc.getUnixTimestamp();
       formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
       // Clear whole screen buffer
       paint.Clear(UNCOLORED);
@@ -583,9 +583,9 @@ void setup()
 
       // // Smiley: center-bottom
       // // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
-      drawSmiley(&paint, SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, HAPPY);
+      //drawSmiley(&paint, SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, HAPPY);
       drawSmiley(&paint, SCREEN_WIDTH/2, SCREEN_HEIGHT * 2/3, 30, NEUTRAL);
-      drawSmiley(&paint, 4*SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, SAD);
+      //drawSmiley(&paint, 4*SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, SAD);
 
       Serial.print("refresh------\r\n ");
       // epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
@@ -613,7 +613,7 @@ void setup()
     // epd.Sleep();
   #endif
 
-  senslog_mark_unread();
+  //senslog_mark_unread(); debug code to trigger new full readout
   setRgbLed(0, 0, 0); // setup done, turn off LED
 
 
@@ -647,7 +647,7 @@ void loop()
         if(!SIM_BMV080 && bmv080.isObstructed() == true)
         {
             Serial.print("\tObstructed");
-            pm25_int = 0x0fff;
+            pm25_int = 0xffff;
         }
         //store in nvs
         uint32_t ts = rtc.getUnixTimestamp();
