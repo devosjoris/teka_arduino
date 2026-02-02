@@ -19,7 +19,7 @@
 
 #include "nfc_data_transfer.h"
 
-// #include "nfc_ota.h"
+#include "nfc_ota.h"
 
 #define SIM_BMV080 0
 
@@ -501,6 +501,9 @@ void setup()
       setRgbLed(0, 0, 1); // blue //keep blue while running setup
     }
 
+    Serial.println("STARTUP FW REV: ");
+    Serial.println(FW_REV);
+
     //power up the dcdc and the 3v3 regulator
     pinMode(PIN_DCDC_EN, OUTPUT);
     digitalWrite(PIN_DCDC_EN, HIGH);
@@ -545,7 +548,7 @@ void setup()
     init_memspace(); //on a fresh device:
 
     // Enable OTA-over-NFC (ST25DV mailbox streaming)
-    //nfc_ota_setup(&tag);
+    nfc_ota_setup(&tag);
 
     setup_bmv080(); //do after tag since the memspace sets the duty cycle...
 
@@ -623,10 +626,10 @@ void loop()
 {
     // If an OTA transfer is in progress, dedicate the loop to it.
     // (Firmware update will reboot the ESP32 when complete.)
-    // if (nfc_ota_poll()) {
-    //   delay(10);
-    //   return; //will rerun the loop:::
-    // }
+    if (nfc_ota_poll()) {
+      delay(5000); //longer time with nfc rf enabled to let app write chunk of data...
+      return; //will rerun the loop:::
+    }
 
     //phone sets new timestamp on connect -> ...
     sync_rtc_from_tag();
