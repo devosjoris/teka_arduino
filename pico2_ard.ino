@@ -22,6 +22,7 @@
 #include "nfc_ota.h"
 
 #define SIM_BMV080 0
+#define DO_SLEEP   1
 
 int64_t last_sensor_readout_us =0;
 int64_t last_nvs_write_us = 0;
@@ -331,27 +332,25 @@ void setup_bmv080(){
     duty_cycling_period = 60;
   }
 
-  if(1){
-    if(bmv080.setDutyCyclingPeriod(duty_cycling_period) == true)
-    {
-        Serial.println("BMV080 set to duty cycle periodxxx");
-        Serial.println(bmv080.dutyCyclingPeriod());
-    }
-    else
-    {
-        Serial.println("Error setting BMV080 duty cycle period");
-        GLOBAL_ERROR = 1;
-    }
+  if(bmv080.setDutyCyclingPeriod(duty_cycling_period) == true)
+  {
+      Serial.println("BMV080 set to duty cycle period");
+      Serial.println(bmv080.dutyCyclingPeriod());
+  }
+  else
+  {
+      Serial.println("Error setting BMV080 duty cycle period");
+      GLOBAL_ERROR = 1;
+  }
 
-    /* Set the sensor mode to Duty Cycle mode */
-    if(bmv080.setMode(SF_BMV080_MODE_DUTY_CYCLE) == true)
-    {
-        Serial.println("BMV080 set to Duty Cycle mode");
-    }
-    else
-    {
-        Serial.println("Error setting BMV080 mode");
-    }
+  /* Set the sensor mode to Duty Cycle mode */
+  if(bmv080.setMode(SF_BMV080_MODE_DUTY_CYCLE) == true)
+  {
+      Serial.println("BMV080 set to Duty Cycle mode");
+  }
+  else
+  {
+      Serial.println("Error setting BMV080 mode");
   }
 }
 
@@ -493,20 +492,19 @@ void setup()
     pinMode(PIN_LED_R, OUTPUT);
     pinMode(PIN_LED_G, OUTPUT);
 
-    if(1){
-      setRgbLed(1, 0, 0); // red
-      delay(100);
-      setRgbLed(0, 1, 0); // green
-      delay(100);
-      setRgbLed(0, 0, 1); // blue //keep blue while running setup
-    }
+
+    setRgbLed(1, 0, 0); // red
+    delay(100);
+    setRgbLed(0, 1, 0); // green
+    delay(100);
+    setRgbLed(0, 0, 1); // blue //keep blue while running setup
 
     Serial.println("STARTUP FW REV: ");
     Serial.println(FW_REV);
 
     //power up the dcdc and the 3v3 regulator
-    pinMode(PIN_DCDC_EN, OUTPUT);
-    digitalWrite(PIN_DCDC_EN, HIGH);
+    // pinMode(PIN_DCDC_EN, OUTPUT);
+    // digitalWrite(PIN_DCDC_EN, HIGH);
     pinMode(PIN_V3V_CTRL, OUTPUT);
     digitalWrite(PIN_V3V_CTRL, HIGH);
     delay(1000); //let the voltages stabilize
@@ -549,77 +547,73 @@ void setup()
 
     // Enable OTA-over-NFC (ST25DV mailbox streaming)
     nfc_ota_setup(&tag);
-
     setup_bmv080(); //do after tag since the memspace sets the duty cycle...
 
-    Epd epd;
-    Serial.print("e-Paper init...");
-    if (epd.Init() != 0) {
-      Serial.print("e-Paper init failed...");
-      return;
-    }
-    Serial.print("2.66inch e-Paper demo...\r\n ");
-    Serial.print("e-Paper Clear...\r\n ");    
-    epd.Clear();  
-    paint.SetRotate(ROTATE_90);
-    
-  #if 1
-    // epd.Init_Partial();
-    // epd.Clear();
-    Serial.print("full display___ \r\n ");
-    UBYTE i;
-    time_start_ms = millis();
-    for(i=0; i<1; i++) {
-      char date_string[20];
-      unix_timestamp = rtc.getUnixTimestamp();
-      formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
-      // Clear whole screen buffer
-      paint.Clear(UNCOLORED);
+      Epd epd;
+      Serial.print("e-Paper init...");
+      if (epd.Init() != 0) {
+        Serial.print("e-Paper init failed...");
+        return;
+      }
+      Serial.print("2.66inch e-Paper demo...\r\n ");
+      Serial.print("e-Paper Clear...\r\n ");    
+      epd.Clear();  
+      paint.SetRotate(ROTATE_90);
+      
+    #if 1
+      // epd.Init_Partial();
+      // epd.Clear();
+      Serial.print("full display___ \r\n ");
+      UBYTE i;
+      time_start_ms = millis();
+      for(i=0; i<1; i++) {
+        char date_string[20];
+        unix_timestamp = rtc.getUnixTimestamp();
+        formatEpochSeconds(unix_timestamp, date_string, sizeof(date_string), false);
+        // Clear whole screen buffer
+        paint.Clear(UNCOLORED);
 
-      // Date: top-left
-       paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
+        // Date: top-left
+        paint.DrawStringAt(10, 3, date_string, &Font12, COLORED);
 
-      int box_x0 = 9;
-      int box_y0 = 30;
+        int box_x0 = 9;
+        int box_y0 = 30;
 
-      drawStringCenter(&paint, &Font16, box_x0, box_y0, (char*)user_name, user_name_length, true);
+        drawStringCenter(&paint, &Font16, box_x0, box_y0, (char*)user_name, user_name_length, true);
 
-      // // Smiley: center-bottom
-      // // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
-      //drawSmiley(&paint, SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, HAPPY);
-      drawSmiley(&paint, SCREEN_WIDTH/2, SCREEN_HEIGHT * 2/3, 30, NEUTRAL);
-      //drawSmiley(&paint, 4*SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, SAD);
+        // // Smiley: center-bottom
+        // // Place near bottom: y ~ SCREEN_HEIGHT * 2/3
+        //drawSmiley(&paint, SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, HAPPY);
+        drawSmiley(&paint, SCREEN_WIDTH/2, SCREEN_HEIGHT * 2/3, 30, NEUTRAL);
+        //drawSmiley(&paint, 4*SCREEN_WIDTH/5, SCREEN_HEIGHT * 2/3, 30, SAD);
 
-      Serial.print("refresh------\r\n ");
-      // epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
+        Serial.print("refresh------\r\n ");
+        // epd.DisplayFrame_part(paint.GetImage(),0,0,152,296);
 
-      // for (int y = 0; y < paint.GetHeight(); y++) {
-      //   for (int x = 0; x < paint.GetWidth(); x++) {
-      //     int idx = (x + y * paint.GetWidth()) / 8;
-      //     uint8_t mask = 0x80 >> (x % 8);
+        // for (int y = 0; y < paint.GetHeight(); y++) {
+        //   for (int x = 0; x < paint.GetWidth(); x++) {
+        //     int idx = (x + y * paint.GetWidth()) / 8;
+        //     uint8_t mask = 0x80 >> (x % 8);
 
-      //     bool bitIs1 = (paint.GetImage()[idx] & mask) != 0;
+        //     bool bitIs1 = (paint.GetImage()[idx] & mask) != 0;
 
-      //     // With IF_INVERT_COLOR=1 in epdpaint.cpp:
-      //     // colored=1 sets bit to 1, colored=0 clears to 0.
-      //     // In your sketch: COLORED=0 (black), UNCOLORED=1 (white)
-      //     bool isWhite = bitIs1;
-      //     Serial.print(isWhite ? ' ' : '.'); // '.' = black pixel
-      //   }
-      //   Serial.println();
-      // }
-      epd.DisplayFrame(paint.GetImage());
+        //     // With IF_INVERT_COLOR=1 in epdpaint.cpp:
+        //     // colored=1 sets bit to 1, colored=0 clears to 0.
+        //     // In your sketch: COLORED=0 (black), UNCOLORED=1 (white)
+        //     bool isWhite = bitIs1;
+        //     Serial.print(isWhite ? ' ' : '.'); // '.' = black pixel
+        //   }
+        //   Serial.println();
+        // }
+        epd.DisplayFrame(paint.GetImage());
 
-      // write_int_tag(&tag, MEM_VAL_TIMESTAMP, 1765989831);
-      // write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0x0000501D);
-    }
-    // epd.Sleep();
-  #endif
+        // write_int_tag(&tag, MEM_VAL_TIMESTAMP, 1765989831);
+        // write_int_tag(&tag, MEM_VAL_NEWTIMESTAMP, 0x0000501D);
+      }
+    #endif
 
-  //senslog_mark_unread(); debug code to trigger new full readout
-  setRgbLed(0, 0, 0); // setup done, turn off LED
-
-
+    //senslog_mark_unread(); debug code to trigger new full readout
+    setRgbLed(0, 0, 0); // setup done, turn off LED
 }
 
 void loop()
@@ -636,7 +630,7 @@ void loop()
     sync_settings_from_tag();
 
     float pm25 = 0.0;
-    if(bmv080.readSensor()  || SIM_BMV080)
+    if(bmv080.readSensor() || SIM_BMV080)
     {
         
         pm25 = SIM_BMV080 ? rtc.getUnixTimestamp() : bmv080.PM25();  //µg/m³ teka spec says ,max is 7mg/m3 so 7000
@@ -659,6 +653,28 @@ void loop()
 
     //check if we received a command over nfc
     nfc_dt_poll(); //at the end of the poll we open the nfc for write / read over nfc, so the delay after this needs to be long enough...
-    //Serial.print(".");
-    delay(2000);
+
+    uint64_t sleep_time_us;
+    if (measurement_mode == 1) {
+      sleep_time_us = 300ULL * 1000000ULL; // 5 minutes
+    } else {
+      sleep_time_us = 60ULL * 1000000ULL;  // 1 minute
+    }
+
+    if(DO_SLEEP){
+      Serial.print("Entering light sleep for ");
+      Serial.print((uint32_t)(sleep_time_us / 1000000ULL));
+      Serial.println(" seconds...");
+      Serial.flush();
+
+      // Light sleep preserves RAM → BMV080 driver state & duty cycle intact
+      // GPIO states are maintained, no hold needed
+      esp_sleep_enable_timer_wakeup(sleep_time_us);
+      esp_light_sleep_start();
+
+      Serial.println("Woke from light sleep");
+    }
+    else{
+      delay(2000);
+    }
 }

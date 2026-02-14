@@ -46,3 +46,16 @@ also updated omn the bmv080 breakout... -> i2c scan at 0x56 works...
 black red white gray ...
 
 
+//dcdc current consumption
+we have when dcdc and ldo are both used:
+(no epaper / bmv080 is connected)
+
+low     37mA
+dcdc    97mA  
+ldo     38mA
+
+so the dcdc consumes a lot
+-> close jumper 13 and we will only use the ldo
+
+low     37mA  
+ldo     48mA
