@@ -12,6 +12,7 @@
 
 #include "esp_sleep.h"
 #include "esp_timer.h"
+#include "driver/ledc.h"
 
 #include "tag_support.h"
 
@@ -667,12 +668,35 @@ void loop()
       Serial.println(" seconds...");
       Serial.flush();
 
-      // Light sleep preserves RAM → BMV080 driver state & duty cycle intact
-      // GPIO states are maintained, no hold needed
+      // Start dim green LED via LEDC PWM with RTC clock - persists during light sleep
+      ledc_timer_config_t ledc_timer = {
+        .speed_mode       = LEDC_LOW_SPEED_MODE,
+        .duty_resolution  = LEDC_TIMER_8_BIT,    // 0-255
+        .timer_num        = LEDC_TIMER_0,
+        .freq_hz          = 1000,
+        .clk_cfg          = LEDC_USE_RTC8M_CLK    // keeps running in light sleep
+      };
+      ledc_timer_config(&ledc_timer);
+
+      ledc_channel_config_t ledc_channel = {
+        .gpio_num       = PIN_LED_G,
+        .speed_mode     = LEDC_LOW_SPEED_MODE,
+        .channel        = LEDC_CHANNEL_0,
+        .intr_type      = LEDC_INTR_DISABLE,
+        .timer_sel      = LEDC_TIMER_0,
+        .duty           = 5,    // ~2% duty = faint glow, minimal current
+        .hpoint         = 0
+      };
+      ledc_channel_config(&ledc_channel);
+
       esp_sleep_enable_timer_wakeup(sleep_time_us);
       esp_light_sleep_start();
-
       Serial.println("Woke from light sleep");
+      // Woke up - stop LEDC and restore pin to normal digital output
+      ledc_stop(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
+      pinMode(PIN_LED_G, OUTPUT);
+      digitalWrite(PIN_LED_G, LOW);
+
     }
     else{
       delay(2000);
