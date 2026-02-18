@@ -67,6 +67,14 @@ static bool process_fw_data(const uint8_t *data, size_t len)
 {
     if (!s_otaBegun || s_dataError) return false;
 
+    // Debug: log first chunk and every 100th to track sizes
+    static uint32_t s_chunkCount = 0;
+    if (s_chunkCount == 0) {
+        Serial.printf("BLE OTA: first chunk %u bytes, magic=0x%02X 0x%02X\n",
+                      len, data[0], len > 1 ? data[1] : 0);
+    }
+    s_chunkCount++;
+
 #if defined(ESP32)
     if (Update.write((uint8_t *)data, len) != len) {
         Serial.printf("BLE OTA: flash write failed: %s\n",
@@ -128,6 +136,9 @@ class CtrlCB : public BLECharacteristicCallbacks {
             break;
         case BLE_OTA_CTRL_END:   s_flagEnd   = true; break;
         case BLE_OTA_CTRL_ABORT: s_flagAbort = true; break;
+        default:
+            // Ignore unknown control commands
+            break;
         }
     }
 };
@@ -326,8 +337,9 @@ bool ble_ota_poll()
     if (s_flagEnd) {
         s_flagEnd = false;
 
-        Serial.printf("BLE OTA: END — received %u / %u bytes\n",
-                       s_received, s_totalSize);
+        Serial.printf("BLE OTA: END — received %u / %u bytes (avg chunk = %u)\n",
+                       s_received, s_totalSize,
+                       s_received > 0 ? s_received / ((s_received / 512) + 1) : 0);
 
 #if defined(ESP32)
         if (!Update.end(true)) {
