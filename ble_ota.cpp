@@ -8,7 +8,6 @@
 
 #if defined(ESP32)
 #include <Update.h>
-#include <esp32s3/rom/miniz.h>          // tinfl decompressor in ROM
 #endif
 
 // ============================================================================
@@ -18,9 +17,6 @@
 // 2. ESP32 sees the trigger, clears it, and starts BLE advertising.
 // 3. App connects via BLE and sends START / data / END commands.
 // 4. ESP32 writes firmware to OTA partition and reboots.
-//
-// Gzip-compressed firmware is auto-detected (magic 0x1F 0x8B) and
-// decompressed on the fly using the ESP32-S3 ROM tinfl library.
 // ============================================================================
 
 namespace {
@@ -50,28 +46,7 @@ static volatile bool     s_flagAbort      = false;
 static volatile bool     s_flagDisconnect = false;
 static volatile bool     s_dataError      = false;
 
-// ---- Gzip streaming decompression ----------------------------------------
-#if defined(ESP32)
-static bool                s_isGzip        = false;
-static bool                s_gzipHdrParsed = false;
-static uint8_t             s_gzipHdr[10];
-static uint8_t             s_gzipHdrLen    = 0;
-static tinfl_decompressor  s_inflator;
-static uint8_t             s_dict[TINFL_LZ_DICT_SIZE];   // 32 KB sliding window
-static size_t              s_dictOfs       = 0;
-#endif
-
 // ---- Helpers --------------------------------------------------------------
-
-static void reset_gzip_state()
-{
-#if defined(ESP32)
-    s_isGzip        = false;
-    s_gzipHdrParsed = false;
-    s_gzipHdrLen    = 0;
-    s_dictOfs       = 0;
-#endif
-}
 
 static void notify_status(uint8_t status)
 {
@@ -91,84 +66,11 @@ static bool process_fw_data(const uint8_t *data, size_t len)
     if (!s_otaBegun || s_dataError) return false;
 
 #if defined(ESP32)
-    // ---- First bytes: detect gzip -----------------------------------------
-    if (s_received == 0 && len >= 2 &&
-        data[0] == 0x1F && data[1] == 0x8B)
-    {
-        Serial.println("BLE OTA: gzip detected");
-        s_isGzip        = true;
-        s_gzipHdrParsed = false;
-        s_gzipHdrLen    = 0;
-        s_dictOfs       = 0;
-        tinfl_init(&s_inflator);
-    }
-
-    if (s_isGzip) {
-        const uint8_t *src = data;
-        size_t srcLeft = len;
-
-        // 1) Parse the 10-byte gzip header (basic gzip only)
-        if (!s_gzipHdrParsed) {
-            while (srcLeft > 0 && s_gzipHdrLen < 10) {
-                s_gzipHdr[s_gzipHdrLen++] = *src++;
-                srcLeft--;
-            }
-            if (s_gzipHdrLen == 10) {
-                if (s_gzipHdr[0] != 0x1F || s_gzipHdr[1] != 0x8B ||
-                    s_gzipHdr[2] != 0x08)
-                {
-                    s_dataError = true;
-                    return false;
-                }
-                uint8_t flg = s_gzipHdr[3];
-                if (flg & 0x1C) {   // FEXTRA | FNAME | FCOMMENT
-                    s_dataError = true;
-                    return false;
-                }
-                s_gzipHdrParsed = true;
-                Serial.println("BLE OTA: gzip header OK");
-            }
-        }
-
-        // 2) Decompress remaining bytes with tinfl (raw deflate)
-        while (srcLeft > 0 && s_gzipHdrParsed) {
-            size_t inBytes  = srcLeft;
-            size_t outBytes = TINFL_LZ_DICT_SIZE - s_dictOfs;
-
-            tinfl_status st = tinfl_decompress(
-                &s_inflator, src, &inBytes,
-                s_dict, s_dict + s_dictOfs, &outBytes,
-                TINFL_FLAG_HAS_MORE_INPUT);
-
-            if (st < TINFL_STATUS_DONE) {
-                Serial.printf("BLE OTA: tinfl error %d\n", (int)st);
-                s_dataError = true;
-                return false;
-            }
-
-            src     += inBytes;
-            srcLeft -= inBytes;
-
-            if (outBytes > 0) {
-                if (Update.write(s_dict + s_dictOfs, outBytes) != outBytes) {
-                    Serial.printf("BLE OTA: flash write failed: %s\n",
-                                  Update.errorString());
-                    s_dataError = true;
-                    return false;
-                }
-            }
-
-            s_dictOfs = (s_dictOfs + outBytes) & (TINFL_LZ_DICT_SIZE - 1);
-            if (st == TINFL_STATUS_DONE) break;
-        }
-    } else {
-        // ---- Raw (uncompressed) path --------------------------------------
-        if (Update.write((uint8_t *)data, len) != len) {
-            Serial.printf("BLE OTA: flash write failed: %s\n",
-                          Update.errorString());
-            s_dataError = true;
-            return false;
-        }
+    if (Update.write((uint8_t *)data, len) != len) {
+        Serial.printf("BLE OTA: flash write failed: %s\n",
+                      Update.errorString());
+        s_dataError = true;
+        return false;
     }
 #endif
 
@@ -330,7 +232,6 @@ bool ble_ota_poll()
 #if defined(ESP32)
             if (s_otaBegun && Update.isRunning()) Update.abort();
 #endif
-            reset_gzip_state();
             s_otaBegun = false;
             Serial.println("BLE OTA: disconnected during transfer — aborted");
         }
@@ -345,7 +246,6 @@ bool ble_ota_poll()
 #if defined(ESP32)
         if (s_otaBegun && Update.isRunning()) Update.abort();
 #endif
-        reset_gzip_state();
         s_otaBegun  = false;
         s_totalSize = 0;
         s_received  = 0;
@@ -368,8 +268,7 @@ bool ble_ota_poll()
         }
 
 #if defined(ESP32)
-        // Use UPDATE_SIZE_UNKNOWN — the size may be the compressed size
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN, U_FLASH)) {
+        if (!Update.begin(fwSize, U_FLASH)) {
             Serial.printf("BLE OTA: Update.begin failed: %s\n",
                           Update.errorString());
             notify_status(BLE_OTA_STATUS_ERROR);
@@ -381,7 +280,6 @@ bool ble_ota_poll()
         s_received  = 0;
         s_otaBegun  = true;
         s_dataError = false;
-        reset_gzip_state();
 
         s_state = BLE_OTA_STATE_RECEIVING;
         notify_status(BLE_OTA_STATUS_READY);
@@ -395,7 +293,6 @@ bool ble_ota_poll()
 #if defined(ESP32)
         if (Update.isRunning()) Update.abort();
 #endif
-        reset_gzip_state();
         s_otaBegun  = false;
         s_dataError = false;
         s_state     = BLE_OTA_STATE_CONNECTED;
@@ -411,8 +308,6 @@ bool ble_ota_poll()
                        s_received, s_totalSize);
 
 #if defined(ESP32)
-        reset_gzip_state();
-
         if (!Update.end(true)) {
             Serial.printf("BLE OTA: Update.end failed: %s\n",
                           Update.errorString());
