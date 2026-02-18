@@ -54,7 +54,7 @@
     #define MEM_VAL_DATA_START          (100 *2) 
     #define MEM_VAL_DATA_END            (8188) //last bit
 
-    #define FW_REV                       1
+    #define FW_REV                       2
 
 
 

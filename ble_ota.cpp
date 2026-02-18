@@ -277,7 +277,10 @@ bool ble_ota_poll()
             if (s_otaBegun && Update.isRunning()) Update.abort();
 #endif
             s_otaBegun = false;
-            Serial.println("BLE OTA: disconnected during transfer — aborted");
+            Serial.println("BLE OTA: disconnected during transfer — rebooting...");
+            stop_ble();
+            delay(200);
+            ESP.restart();
         }
         stop_ble();
         return false;
@@ -295,7 +298,9 @@ bool ble_ota_poll()
         s_received  = 0;
         s_dataError = false;
         notify_status(BLE_OTA_STATUS_ERROR);
-        s_state = BLE_OTA_STATE_CONNECTED;   // stay connected for retry
+        Serial.println("BLE OTA: ABORT — rebooting...");
+        delay(200);
+        ESP.restart();
         return true;
     }
 
@@ -328,8 +333,10 @@ bool ble_ota_poll()
 #endif
         s_otaBegun  = false;
         s_dataError = false;
-        s_state     = BLE_OTA_STATE_CONNECTED;
         notify_status(BLE_OTA_STATUS_ERROR);
+        Serial.println("BLE OTA: data error — rebooting...");
+        delay(200);
+        ESP.restart();
         return true;
     }
 
@@ -347,7 +354,9 @@ bool ble_ota_poll()
                           Update.errorString());
             notify_status(BLE_OTA_STATUS_ERROR);
             s_otaBegun = false;
-            s_state    = BLE_OTA_STATE_CONNECTED;
+            Serial.println("BLE OTA: verify failed — rebooting...");
+            delay(200);
+            ESP.restart();
             return true;
         }
 
