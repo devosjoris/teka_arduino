@@ -1,45 +1,30 @@
 #!/usr/bin/env python3
-"""Validate an ESP32 firmware .bin and generate OTA metadata for NFC streaming.
+"""Validate an ESP32 firmware .bin and generate OTA metadata for NFC transfer.
 
-This project’s NFC OTA receiver expects:
+This project's NFC OTA receiver uses EEPROM-based transfer:
 - totalSize: the firmware size in bytes
-- crc32: standard Ethernet/ZIP CRC32 of the whole binary
-
-It does NOT require PSRAM; it streams small mailbox payloads.
+- crc32: standard Ethernet/ZIP CRC32 of each chunk
+- Chunks are written to EEPROM at address 0xC8 (max 1800 bytes)
 
 Usage examples:
   python src/tools/nfc_ota_check.py
-  python src/tools/nfc_ota_check.py --bin .pio/build/esp32s3-dev/firmware.bin --write-manifest
-    python src/tools/nfc_ota_check.py --write-stream
-  python src/tools/nfc_ota_check.py --chunk-size 200 --write-manifest --out firmware.nfc_ota.json
-    python src/tools/nfc_ota_check.py --chunk-size 200 --write-stream --stream-out firmware.nfc_ota.stream
+  python src/tools/nfc_ota_check.py --bin .pio/build/esp32s3-dev/firmware.bin --write-manifest  (--gzip)
+  python src/tools/nfc_ota_check.py --gzip --write-manifest
 """
 
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import os
 import sys
 import zlib
 from dataclasses import asdict, dataclass
 from hashlib import sha256
-import struct
 
 
-MAX_MAILBOX_LEN = 255
-HEADER_LEN = 16
-MAX_PAYLOAD_LEN = MAX_MAILBOX_LEN - HEADER_LEN  # 239
-
-
-# Protocol constants (must match src/nfc_ota.cpp)
-MAGIC = 0x544F464E  # 'N''F''O''T' little-endian
-VERSION = 1
-
-MSG_START = 1
-MSG_DATA = 2
-MSG_END = 3
-MSG_ABORT = 4
+MAX_EEPROM_CHUNK = 1800  # Must match NFC_OTA_MAX_CHUNK_SIZE in nfc_ota.h
 
 
 @dataclass(frozen=True)
@@ -49,48 +34,9 @@ class OtaManifest:
     crc32: str  # 0x????????
     sha256: str
     chunk_size: int
-    max_payload_size: int
+    max_chunk_size: int
     data_packets: int
-
-
-def build_header(*, msg_type: int, seq: int, arg0: int, data_len: int) -> bytes:
-    if not (0 <= seq <= 0xFFFF):
-        raise ValueError(f"seq out of range: {seq}")
-    if not (0 <= arg0 <= 0xFFFFFFFF):
-        raise ValueError(f"arg0 out of range: {arg0}")
-    if not (0 <= data_len <= 0xFFFF):
-        raise ValueError(f"data_len out of range: {data_len}")
-
-    # struct MsgHeader (little-endian, packed):
-    #   u32 magic
-    #   u8  version
-    #   u8  type
-    #   u16 seq
-    #   u32 arg0
-    #   u16 dataLen
-    #   u16 reserved
-    return struct.pack("<IBBH IHH", MAGIC, VERSION, msg_type, seq, arg0, data_len, 0)
-
-
-def build_frame(*, msg_type: int, seq: int, arg0: int, payload: bytes) -> bytes:
-    if payload is None:
-        payload = b""
-    if len(payload) > MAX_PAYLOAD_LEN:
-        raise ValueError(f"payload too large for mailbox: {len(payload)} > {MAX_PAYLOAD_LEN}")
-    header = build_header(msg_type=msg_type, seq=seq, arg0=arg0, data_len=len(payload))
-    frame = header + payload
-    if len(frame) > MAX_MAILBOX_LEN:
-        raise ValueError(f"frame too large for mailbox: {len(frame)} > {MAX_MAILBOX_LEN}")
-    return frame
-
-
-def write_length_prefixed_stream(out_path: str, frames: list[bytes]) -> None:
-    # Stream format: repeated records of [u16_le frame_len][frame_bytes]
-    # frame_len is the mailbox message length (<=255)
-    with open(out_path, "wb") as f:
-        for frame in frames:
-            f.write(struct.pack("<H", len(frame)))
-            f.write(frame)
+    compression: str = "none"
 
 
 def compute_crc32_and_sha256(path: str, chunk: int = 1024 * 1024) -> tuple[int, str]:
@@ -122,8 +68,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--chunk-size",
         type=int,
-        default=200,
-        help=f"Suggested NFC mailbox payload chunk size (1..{MAX_PAYLOAD_LEN}, default: 200)",
+        default=1800,
+        help=f"EEPROM chunk size per DATA packet (1..{MAX_EEPROM_CHUNK}, default: 1800)",
     )
     parser.add_argument(
         "--write-manifest",
@@ -137,25 +83,9 @@ def main(argv: list[str]) -> int:
     )
 
     parser.add_argument(
-        "--write-stream",
+        "--gzip",
         action="store_true",
-        help="Write a compact length-prefixed stream of START/DATA/END frames for NFC uploading",
-    )
-    parser.add_argument(
-        "--stream-out",
-        default="",
-        help="Stream output path (default: <bin>.nfc_ota.stream when --write-stream is set)",
-    )
-    parser.add_argument(
-        "--start-seq",
-        type=int,
-        default=0,
-        help="Sequence number for START packet (default: 0)",
-    )
-    parser.add_argument(
-        "--skip-crc",
-        action="store_true",
-        help="Write END.arg0 = 0 (skip CRC check on device)",
+        help="Compress firmware with gzip before processing",
     )
 
     args = parser.parse_args(argv)
@@ -166,9 +96,23 @@ def main(argv: list[str]) -> int:
         print("Build it with: pio run -e esp32s3-dev", file=sys.stderr)
         return 2
 
-    if args.chunk_size <= 0 or args.chunk_size > MAX_PAYLOAD_LEN:
+    compression_type = "none"
+    if args.gzip:
+        print(f"Compressing {bin_path}...")
+        with open(bin_path, "rb") as f:
+            raw_data = f.read()
+        compressed_data = gzip.compress(raw_data, compresslevel=9)
+        bin_path = bin_path + ".gz"
+        with open(bin_path, "wb") as f:
+            f.write(compressed_data)
+        compression_type = "gzip"
+        print(f"  orig size: {len(raw_data)}")
+        print(f"  gzip size: {len(compressed_data)} ({len(compressed_data)/len(raw_data)*100:.1f}%)")
+        print(f"  Using {bin_path} for OTA generation")
+
+    if args.chunk_size <= 0 or args.chunk_size > MAX_EEPROM_CHUNK:
         print(
-            f"ERROR: --chunk-size must be 1..{MAX_PAYLOAD_LEN} (got {args.chunk_size})",
+            f"ERROR: --chunk-size must be 1..{MAX_EEPROM_CHUNK} (got {args.chunk_size})",
             file=sys.stderr,
         )
         return 2
@@ -192,49 +136,21 @@ def main(argv: list[str]) -> int:
         crc32=f"0x{crc:08X}",
         sha256=sha,
         chunk_size=args.chunk_size,
-        max_payload_size=MAX_PAYLOAD_LEN,
+        max_chunk_size=MAX_EEPROM_CHUNK,
         data_packets=data_packets,
+        compression=compression_type,
     )
 
     print("NFC OTA firmware check")
     print(f"  bin:      {manifest.bin_path}")
     print(f"  size:     {manifest.size_bytes} bytes")
-    print(f"  crc32:    {manifest.crc32}  (use as END.arg0; or set 0 to skip)")
+    print(f"  crc32:    {manifest.crc32}")
     print(f"  sha256:   {manifest.sha256}")
-    print(f"  payload:  {manifest.chunk_size} bytes per DATA packet (max {manifest.max_payload_size})")
+    print(f"  chunk:    {manifest.chunk_size} bytes per DATA packet (max {manifest.max_chunk_size})")
     print(f"  packets:  {manifest.data_packets} DATA packets")
+    print(f"  compress: {manifest.compression}")
     if not header_ok:
         print("  warning:  file does not start with 0xE9; may not be an ESP32 app image")
-
-    if args.write_stream:
-        start_seq = args.start_seq
-        if start_seq < 0 or start_seq > 0xFFFF:
-            print("ERROR: --start-seq must be 0..65535", file=sys.stderr)
-            return 2
-
-        end_crc = 0 if args.skip_crc else (crc & 0xFFFFFFFF)
-
-        frames: list[bytes] = []
-        frames.append(build_frame(msg_type=MSG_START, seq=start_seq, arg0=size, payload=b""))
-
-        seq = (start_seq + 1) & 0xFFFF
-        offset = 0
-        with open(bin_path, "rb") as f:
-            while True:
-                payload = f.read(args.chunk_size)
-                if not payload:
-                    break
-                frames.append(build_frame(msg_type=MSG_DATA, seq=seq, arg0=offset, payload=payload))
-                offset += len(payload)
-                seq = (seq + 1) & 0xFFFF
-
-        frames.append(build_frame(msg_type=MSG_END, seq=seq, arg0=end_crc, payload=b""))
-
-        out_path = args.stream_out
-        if not out_path:
-            out_path = bin_path + ".nfc_ota.stream"
-        write_length_prefixed_stream(out_path, frames)
-        print(f"  stream:   wrote {out_path} ({len(frames)} frames)")
 
     if args.write_manifest:
         out_path = args.out

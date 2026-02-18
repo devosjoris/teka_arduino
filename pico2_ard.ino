@@ -20,7 +20,7 @@
 
 #include "nfc_data_transfer.h"
 
-#include "nfc_ota.h"
+#include "ble_ota.h"
 
 #define SIM_BMV080 0
 #define DO_SLEEP   1
@@ -546,8 +546,8 @@ void setup()
 
     init_memspace(); //on a fresh device:
 
-    // Enable OTA-over-NFC (ST25DV mailbox streaming)
-    nfc_ota_setup(&tag);
+    // Enable OTA-over-BLE (NFC-triggered, BLE data transfer)
+    ble_ota_setup(&tag);
     setup_bmv080(); //do after tag since the memspace sets the duty cycle...
 
       Epd epd;
@@ -619,11 +619,11 @@ void setup()
 
 void loop()
 {
-    // If an OTA transfer is in progress, dedicate the loop to it.
-    // (Firmware update will reboot the ESP32 when complete.)
-    if (nfc_ota_poll()) {
-      delay(5000); //longer time with nfc rf enabled to let app write chunk of data...
-      return; //will rerun the loop:::
+    // If BLE OTA is active (advertising, connected, or transferring),
+    // dedicate the loop to it.  Device will reboot on success.
+    if (ble_ota_poll()) {
+      delay(100);
+      return;
     }
 
     //phone sets new timestamp on connect -> ...

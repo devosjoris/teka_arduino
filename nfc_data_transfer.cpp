@@ -18,7 +18,7 @@ static uint16_t s_lastBatchIndices[NFC_DT_MAX_ENTRIES];
 static uint16_t s_lastBatchCount = 0;
 
 
-// CRC32 (Ethernet, reversed polynomial) - same as nfc_ota.cpp
+// CRC32 (Ethernet, reversed polynomial)
 static uint32_t crc32_update(uint32_t crc, const uint8_t* data, size_t len)
 {
     crc = ~crc;
