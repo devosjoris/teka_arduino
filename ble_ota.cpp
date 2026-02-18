@@ -8,6 +8,8 @@
 
 #if defined(ESP32)
 #include <Update.h>
+#include "soc/soc.h"
+#include "soc/rtc_cntl_reg.h"
 #endif
 
 // ============================================================================
@@ -100,10 +102,27 @@ class CtrlCB : public BLECharacteristicCallbacks {
         switch ((uint8_t)v[0]) {
         case BLE_OTA_CTRL_START:
             if (v.size() >= 5) {
-                s_pendingFwSize = (uint8_t)v[1]        |
+                uint32_t fwSize = (uint8_t)v[1]        |
                                   ((uint8_t)v[2] << 8)  |
                                   ((uint8_t)v[3] << 16) |
                                   ((uint8_t)v[4] << 24);
+                s_pendingFwSize = fwSize;
+
+                // Begin the Update session *synchronously* in the BLE
+                // callback so that s_otaBegun is true before any data
+                // chunks arrive (they run on the same BTC task).
+#if defined(ESP32)
+                if (s_otaBegun && Update.isRunning()) {
+                    Update.abort();
+                    s_otaBegun = false;
+                }
+                if (fwSize > 0 && Update.begin(fwSize, U_FLASH)) {
+                    s_otaBegun  = true;
+                    s_received  = 0;
+                    s_totalSize = fwSize;
+                    s_dataError = false;
+                }
+#endif
                 s_flagStart = true;
             }
             break;
@@ -131,8 +150,22 @@ static void start_ble()
 {
     if (!s_bleInit) {
         Serial.println("BLE OTA: initialising BLE...");
+        Serial.flush();
+
+#if defined(ESP32)
+        // The BLE radio draws a large current spike on init.
+        // Temporarily disable the brownout detector to survive the transient.
+        CLEAR_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG, RTC_CNTL_BROWN_OUT_ENA);
+#endif
+
         BLEDevice::init("DustSensor-OTA");
-        BLEDevice::setMTU(517);
+
+#if defined(ESP32)
+        // Re-enable brownout detector now that BLE is up.
+        SET_PERI_REG_MASK(RTC_CNTL_BROWN_OUT_REG, RTC_CNTL_BROWN_OUT_ENA);
+#endif
+
+        BLEDevice::setMTU(512);
 
         s_server = BLEDevice::createServer();
         s_server->setCallbacks(&s_serverCB);
@@ -145,12 +178,12 @@ static void start_ble()
             BLECharacteristic::PROPERTY_WRITE |
             BLECharacteristic::PROPERTY_NOTIFY);
         s_ctrlChar->addDescriptor(new BLE2902());
-        s_ctrlChar->setCallbacks(&s_ctrlCB);
+        s_ctrlChar->setCallbacks(&s_ctrlCB);    
 
-        // Data characteristic (write without response)
+        // Data characteristic (write with response)
         s_dataChar = svc->createCharacteristic(
             BLE_OTA_DATA_CHAR_UUID,
-            BLECharacteristic::PROPERTY_WRITE_NR);
+            BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
         s_dataChar->setCallbacks(&s_dataCB);
 
         svc->start();
@@ -262,24 +295,13 @@ bool ble_ota_poll()
 
         Serial.printf("BLE OTA: START — firmware size = %u bytes\n", fwSize);
 
-        if (fwSize == 0) {
+        if (fwSize == 0 || !s_otaBegun) {
+            // Update.begin() was attempted in the BLE callback;
+            // if it failed s_otaBegun is still false.
+            Serial.println("BLE OTA: Update.begin failed (from callback)");
             notify_status(BLE_OTA_STATUS_ERROR);
             return true;
         }
-
-#if defined(ESP32)
-        if (!Update.begin(fwSize, U_FLASH)) {
-            Serial.printf("BLE OTA: Update.begin failed: %s\n",
-                          Update.errorString());
-            notify_status(BLE_OTA_STATUS_ERROR);
-            return true;
-        }
-#endif
-
-        s_totalSize = fwSize;
-        s_received  = 0;
-        s_otaBegun  = true;
-        s_dataError = false;
 
         s_state = BLE_OTA_STATE_RECEIVING;
         notify_status(BLE_OTA_STATUS_READY);

@@ -689,7 +689,8 @@ void loop()
       };
       ledc_channel_config(&ledc_channel);
 
-      esp_sleep_enable_timer_wakeup(sleep_time_us);
+      // esp_sleep_enable_timer_wakeup(sleep_time_us);
+      esp_sleep_enable_timer_wakeup(10000000);
       esp_light_sleep_start();
       Serial.println("Woke from light sleep");
       // Woke up - stop LEDC and restore pin to normal digital output
