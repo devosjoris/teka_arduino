@@ -1,5 +1,6 @@
 #include "ble_ota.h"
 #include "tag_support.h"
+#include "pinmap.h"
 
 #include <BLEDevice.h>
 #include <BLEServer.h>
@@ -320,6 +321,10 @@ bool ble_ota_poll()
         }
 
         s_state = BLE_OTA_STATE_RECEIVING;
+        // Red + blue LED on while receiving firmware
+        digitalWrite(PIN_LED_R, HIGH);
+        digitalWrite(PIN_LED_B, HIGH);
+        digitalWrite(PIN_LED_G, LOW);
         notify_status(BLE_OTA_STATUS_READY);
         Serial.println("BLE OTA: READY — streaming firmware over BLE");
         return true;
